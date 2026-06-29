@@ -87,6 +87,33 @@ void append_entry(std::ostringstream &out, const AdaptiveManufacturingDebugEntry
     out << "}";
 }
 
+void append_observation_entry(std::ostringstream &out, const AdaptiveManufacturingDebugObservationEntry &entry)
+{
+    out << "{";
+    out << "\"object_id\":" << entry.object_id;
+    out << ",\"layer_id\":" << entry.layer_id;
+    out << ",\"region_id\":" << entry.region_id;
+    out << ",\"region_category\":\"" << json_escape(entry.region_category) << "\"";
+    out << ",\"observed_item_count\":" << entry.observed_item_count;
+    out << ",\"warning_count\":" << entry.warning_count;
+    out << "}";
+}
+
+void append_observation_summary(std::ostringstream &out, const AdaptiveManufacturingDebugObservationSummary &summary)
+{
+    out << "{";
+    out << "\"warnings\":";
+    append_json_string_array(out, summary.warnings());
+    out << ",\"entries\":[";
+    const auto &entries = summary.entries();
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (i > 0)
+            out << ",";
+        append_observation_entry(out, entries[i]);
+    }
+    out << "]}";
+}
+
 } // namespace
 
 std::string serialize_adaptive_manufacturing_debug_artifact(const AdaptiveManufacturingDebugArtifact &artifact)
@@ -108,7 +135,12 @@ std::string serialize_adaptive_manufacturing_debug_artifact(const AdaptiveManufa
             out << ",";
         append_entry(out, entries[i]);
     }
-    out << "]}";
+    out << "]";
+    if (artifact.observation_summary.has_value()) {
+        out << ",\"observation_summary\":";
+        append_observation_summary(out, *artifact.observation_summary);
+    }
+    out << "}";
     return out.str();
 }
 

@@ -7,6 +7,7 @@ add_executable(${_TEST_NAME}_tests
 	test_adaptive_manufacturing_debug_artifact_serializer.cpp
 	test_adaptive_manufacturing_debug_artifact_writer.cpp
 	test_adaptive_manufacturing_observation.cpp
+	test_adaptive_manufacturing_observation_debug_mapper.cpp
 	test_adaptive_manufacturing_plan.cpp
 	test_adaptive_manufacturing_planner.cpp
 	test_adaptive_manufacturing_sidecar.cpp
