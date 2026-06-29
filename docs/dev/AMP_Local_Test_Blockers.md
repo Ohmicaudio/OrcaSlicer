@@ -164,6 +164,25 @@ Visual Studio detection:
 C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools
 ```
 
+## AMP value-type standalone compile check
+
+After commit `19f594d` (`planner: add stock fallback AMP value types`), the new value-type source and test translation units were checked directly with the local MinGW compiler.
+
+Command:
+
+```powershell
+g++ -std=c++17 -Isrc -Itests -Ideps -c src\libslic3r\AdaptiveManufacturingPlan.cpp -o NUL
+g++ -std=c++17 -Isrc -Itests -Ideps -c tests\libslic3r\test_adaptive_manufacturing_plan.cpp -o NUL
+```
+
+Observed result:
+
+```text
+Both commands exited with code 0.
+```
+
+This confirms the new AMP value-type files compile as standalone translation units. It does not prove the full `libslic3r_tests` target builds or runs, because full CMake configure still stops at the missing Boost `1.83.0` dependency package before test targets are generated.
+
 ## Next recommended fix
 
 The immediate CMake version mismatch is resolved by using local CMake `3.31.8`.
@@ -201,5 +220,7 @@ cmake --build "C:\Users\d\Documents\Codex\2026-06-28\finish-the-apps-administrat
 Alternative:
 
 - Install Visual Studio 2022 and run `build_release_vs2022.bat deps`, then configure with the generated VS2022 dependency prefix.
+
+Full test execution remains blocked locally until the dependency prefix is available.
 
 Do not start the no-op Adaptive Manufacturing Planner scaffold until the config test binary builds and the focused config test runs, or until this dependency setup blocker is resolved in a repeatable way.
