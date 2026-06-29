@@ -8,6 +8,8 @@ Post:
 
 I am starting an open-source Snapmaker U1 slicer project tentatively called Adaptive Manufacturing Planner.
 
+Public branch: https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy
+
 The idea is to explore a cleaner way to balance detail, strength, and print time on U1:
 
 1. Stage 1: Adaptive bead widths
@@ -36,4 +38,3 @@ I am looking for feedback from U1 users and Snapmaker maintainers:
 - What nozzle combinations are most realistic for U1 users?
 
 The goal is a reproducible, open project that can eventually be reviewed for upstream Snapmaker Orca compatibility.
-

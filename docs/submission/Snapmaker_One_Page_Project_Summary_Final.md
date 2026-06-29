@@ -4,7 +4,7 @@
 **Project:** Adaptive Manufacturing Planner (AMP) for Snapmaker Orca
 **Working title note:** Earlier drafts used "Adaptive Nozzle Strategy." We have standardized on "Adaptive Manufacturing Planner" so the work is not mistaken for physical nozzle morphing — AMP plans manufacturing strategy; it does not change a nozzle's physical diameter.
 **Category:** Slicer / software (secondary: hardware-validated workflow, Stage 2 only)
-**Repository:** *[public GitHub URL — to be added before formal submission]*
+**Repository:** https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy
 
 ---
 

@@ -4,9 +4,10 @@
 
 - Project name: Adaptive Manufacturing Planner
 - Tagline: A safety-first path toward geometry-aware manufacturing planning for Snapmaker U1.
-- GitHub URL placeholder: `[TBD: public GitHub repository URL]`
+- GitHub URL: <https://github.com/Ohmicaudio/OrcaSlicer>
+- Project branch URL: <https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy>
 - Public community post URL placeholder: `[TBD: Snapmaker community post URL]`
-- Contact email: `[TBD: project contact email]`
+- Contact email: `[confirm public project contact email before submission]`
 
 ## B. Current Technical Status
 

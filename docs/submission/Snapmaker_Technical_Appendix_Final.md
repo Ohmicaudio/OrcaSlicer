@@ -3,6 +3,7 @@
 **For:** Snapmaker U1 Innovation Fund reviewers and Snapmaker Orca maintainers
 **Companion to:** `Snapmaker_One_Page_Project_Summary_Final.md`, `Snapmaker_Form_Answers_Final.md`
 **Status:** Design and validation stage. No behavior-changing slicer code is shipped or implied.
+**Public branch:** <https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy>
 
 This appendix gives maintainers the technical detail needed to evaluate AMP without reading the full design set. It is written against the actual Snapmaker Orca codebase, not against an abstract design.
 

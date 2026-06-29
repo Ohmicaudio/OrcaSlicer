@@ -9,6 +9,8 @@
 
 This branch is preparing the Adaptive Manufacturing Planner (AMP), an experimental project being developed toward geometry-aware manufacturing planning for Snapmaker U1 and Snapmaker Orca.
 
+Public branch: <https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy>
+
 AMP is staged deliberately. Stage 1 is software-only bead-width and profile validation using existing slicer capabilities. Stage 2 physical mixed-nozzle behavior requires U1 hardware validation before any claims or behavior-changing implementation.
 
 The current implementation is scaffold and read-only infrastructure only. It includes developer-only configuration, stock fallback planner value types, debug artifact data structures, serialization/writer utilities, observation summary value types, and focused tests. No production slicer path consumes AMP yet, no generated G-code is changed, and no Snapmaker safety checks or nozzle validation paths are bypassed.

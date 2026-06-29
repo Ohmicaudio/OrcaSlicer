@@ -18,7 +18,7 @@ Adaptive Manufacturing Planner (AMP) for Snapmaker Orca
 
 ## Project URL
 
-*[public GitHub repository URL — to be added before submission]*
+https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy
 
 Happy to share the repository and design docs directly with the Snapmaker team ahead of the formal form if that is preferred.
 
@@ -101,4 +101,4 @@ The business case:
 
 - **Name:** *[applicant name]*
 - **Organization:** Ohmic Audio Labs (functional benchmark parts: speaker adapters, LED rings, amplifier mounts, trim, fabrication fixtures)
-- **Contact:** *[email]*
+- **Contact:** *[confirm public project contact email before submission]*

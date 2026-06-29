@@ -35,11 +35,13 @@ I am reaching out for three reasons:
 2. To ask whether Snapmaker would consider U1 hardware access, nozzle/toolhead guidance, or engineering feedback so Stage 2 can be validated responsibly.
 3. To make sure the project is aligned with Snapmaker's preferred development path before the public repository and formal submission are finalized.
 
+Public branch: https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy
+
 I believe this project could help demonstrate the U1 as more than a multi-color printer. It could show the U1 as a practical multi-tool manufacturing platform where different tools are selected intelligently based on the geometry and purpose of the part.
 
 For validation, I plan to use real functional parts rather than benchmark toys, including speaker adapters, LED speaker rings, amplifier mounting components, interior trim parts, and fabrication fixtures from Ohmic Audio Labs.
 
-The public repository is being prepared now and can be shared as soon as it is published. I would also be happy to provide the current technical documentation, roadmap, and test plan before the formal submission if that would be useful.
+The public repository is now available, and I would be happy to provide the current technical documentation, roadmap, and test plan before the formal submission if that would be useful.
 
 Thank you for your time and consideration.
 
