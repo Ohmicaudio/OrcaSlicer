@@ -23,6 +23,8 @@ set(lisbslic3r_sources
     AABBMesh.hpp
     AABBTreeIndirect.hpp
     AABBTreeLines.hpp
+    AdaptiveManufacturingDebugArtifact.cpp
+    AdaptiveManufacturingDebugArtifact.hpp
     AdaptiveManufacturingPlan.cpp
     AdaptiveManufacturingPlan.hpp
     AdaptiveManufacturingPlanner.cpp
