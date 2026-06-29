@@ -4,7 +4,7 @@
 
 **Project:** Project Atlas / Adaptive Manufacturing Planner (AMP)
 
-**Target platform:** Snapmaker U1 / Snapmaker Orca fork
+**Target ecosystem:** OrcaSlicer / Snapmaker Orca / Snapmaker U1
 
 **Status:** Research draft
 
@@ -15,7 +15,9 @@ This report reviews prior art and public implementation context for two related 
 - **Adaptive bead-width planning:** Software-controlled variation of extrusion width while using a declared physical nozzle size.
 - **Physical mixed-nozzle switching:** Use of multiple physical toolheads or nozzles with different diameters in one manufacturing plan.
 
-The important finding is that adaptive bead-width planning is already supported in modern slicer engines through Arachne-style variable-width wall generation, while automated geometry-driven assignment across physically different nozzle diameters remains a less settled workflow. This report did not identify a production-ready path that automatically partitions a single part into local regions, scores those regions, and assigns different physical nozzle diameters based on geometry, cosmetic priority, structural need, and tool-change cost.
+The important finding is that adaptive bead-width planning is already supported in modern slicer engines through Arachne-style variable-width wall generation, while automated geometry-driven assignment across physically different nozzle diameters remains a less settled workflow. This report did not identify a production-ready path that automatically partitions a single contiguous part into local regions, scores those regions, and assigns different physical nozzle diameters based on geometry, cosmetic priority, structural need, and tool-change cost.
+
+Snapmaker's public U1 hot-end documentation confirms that U1 supports multiple hot-end nozzle diameter options, but it also states that "mixing different nozzle diameters in the same print job" is not currently supported. That makes physical mixed-nozzle behavior a hardware-validation and product-alignment question, not a safe assumption for early AMP code.
 
 For the Adaptive Manufacturing Planner, this supports the staged plan already documented in this branch:
 
@@ -36,6 +38,8 @@ Relevant sources:
 - Ultimaker's `libArachne` describes adaptive-width toolpath generation for thin outline features: <https://github.com/Ultimaker/libArachne/blob/master/README.md>
 - Kuipers et al. describe adaptive-width dense contour-parallel toolpaths for FDM: <https://arxiv.org/abs/2004.13497>
 
+This category maps one declared physical nozzle size to a range of bead widths along generated extrusion lanes. It is the software-only foundation for AMP Stage 1.
+
 ### Role-Specific Extrusion Width Settings
 
 Role-specific line-width settings are static profile parameters. They can set different widths for external perimeters, internal walls, infill, top surfaces, or support while still operating within the slicer's existing profile model.
@@ -44,7 +48,7 @@ For current AMP validation, this is the Level 1 path: experimental profile-only 
 
 ### Physical Nozzle / Tool Switching
 
-Physical nozzle switching refers to selecting a different toolhead or extruder with a different actual nozzle diameter. This is separate from adaptive bead width. It has hardware implications:
+Physical nozzle switching refers to selecting, translating, parking, or activating a different toolhead/extruder with a different actual nozzle diameter. This is separate from adaptive bead width. It has hardware implications:
 
 - tool selection
 - nozzle state validation
@@ -72,6 +76,16 @@ This report did not identify a stable, production-ready implementation of that f
 | Mixed physical nozzle setup | Described in Orca-related documentation and issues, with workflow limits. | Needs careful validation and should not be treated as solved for U1. |
 | Automated geometry-driven physical nozzle assignment | Not identified as production-ready in this review. | Core future AMP research area. |
 
+### Desktop Slicer Capability Summary
+
+This review treats variable-width path generation and physical mixed-nozzle assignment as separate capabilities.
+
+| Ecosystem | Variable bead-width engine | Static multi-extruder/tool assignment | Automated local mixed-nozzle assignment |
+| --- | --- | --- | --- |
+| Cura / Ultimaker lineage | Arachne/libArachne evidence exists. | Supported through normal multi-extruder workflows. | Not identified in this review. |
+| PrusaSlicer lineage | Arachne perimeter generation is documented. | Supported through normal multi-extruder workflows. | Not identified in this review. |
+| OrcaSlicer / Snapmaker Orca lineage | Arachne-derived wall generation and role-specific widths are available. | Supported through profile/tool configuration, with UI/workflow constraints reported for some printers. | Not identified as a validated U1 workflow. |
+
 Relevant Orca context:
 
 - OrcaSlicer wiki page describing mixed nozzle setup by extruder: <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes.html>
@@ -87,17 +101,19 @@ Kuipers, Doubrovski, Wu, and Wang's paper, "A framework for adaptive width contr
 Stable references:
 
 - arXiv: <https://arxiv.org/abs/2004.13497>
+- DOI: <https://doi.org/10.1016/j.cad.2020.102907>
 - TU Delft research record: <https://research.tudelft.nl/en/publications/a-framework-for-adaptive-width-control-of-dense-contour-parallel-/>
 
 AMP implication:
 
 - Adaptive bead widths should start conservative.
+- Continuous bead-width changes are a toolpath and process-control problem, not only a geometric offset problem.
 - Any future behavior-changing width plan needs regression geometry and physical print validation.
 - Preview/G-code inspection can validate path differences, but not real strength, surface quality, dimensional accuracy, or bonding.
 
 ## 5. Snapmaker U1 Context
 
-Snapmaker U1 is relevant because it has multiple toolheads and official hot-end options across several nozzle diameters. Public Snapmaker documentation confirms the available hot-end nozzle diameter options but does not, by itself, validate automated geometry-driven mixed-nozzle planning.
+Snapmaker U1 is relevant because it has multiple toolheads and official hot-end options across several nozzle diameters. Public Snapmaker documentation confirms 0.2 mm, 0.4 mm, 0.6 mm, and 0.8 mm hot-end options, but it also states that mixed nozzle diameters in the same print job are not currently supported. The same guide documents nozzle diameter synchronization and printer-side mismatch handling.
 
 Official reference:
 
@@ -113,6 +129,7 @@ AMP implication:
 - Stage 2 physical mixed-nozzle behavior remains blocked until U1 hardware validation.
 - Do not bypass nozzle mismatch checks or Snapmaker validation paths.
 - Do not claim mixed physical nozzle behavior works before real U1 prints.
+- Do not generate physical mixed-nozzle commands until toolchange overhead, validation behavior, and purge/wipe implications are measured or documented for U1.
 
 ## 6. Solved, Partially Solved, And Open Areas
 
@@ -146,6 +163,16 @@ This means current code is scaffolding, not manufacturing behavior.
 - Safe conversion from advisory region maps into future behavior-changing bead-width plans.
 - U1 physical validation for mixed nozzles, purge/wipe behavior, nozzle state validation, and print quality.
 
+### Core Gap For AMP
+
+The reviewed sources cover parts of the problem:
+
+- Arachne-style engines handle local bead-width adaptation.
+- Existing slicer profiles handle role-specific widths and static extruder/tool assignments.
+- U1 hardware documentation covers nozzle options, calibration, and synchronization requirements.
+
+The gap AMP targets is the orchestration layer between geometry analysis and manufacturing strategy: a planner that can evaluate local feature size, curvature density, structural/cosmetic importance, tool accessibility, and tool-change cost before recommending either software bead-width changes or future physical tool choices.
+
 ## 7. Roadmap Alignment
 
 ```text
@@ -163,6 +190,7 @@ Stage 1 should remain software-only until the read-only planner boundary is stab
 - Prusa Research, "Arachne perimeter generator": <https://help.prusa3d.com/article/arachne-perimeter-generator_352769>
 - Ultimaker, `libArachne` README: <https://github.com/Ultimaker/libArachne/blob/master/README.md>
 - Kuipers, T.; Doubrovski, E. L.; Wu, J.; Wang, C. C. L., "A framework for adaptive width control of dense contour-parallel toolpaths in fused deposition modeling": <https://arxiv.org/abs/2004.13497>
+- Kuipers, T.; Doubrovski, E. L.; Wu, J.; Wang, C. C. L., DOI record for "A framework for adaptive width control of dense contour-parallel toolpaths in fused deposition modeling": <https://doi.org/10.1016/j.cad.2020.102907>
 - TU Delft research record for the Kuipers et al. paper: <https://research.tudelft.nl/en/publications/a-framework-for-adaptive-width-control-of-dense-contour-parallel-/>
 - OrcaSlicer wiki, "Mixed Nozzle Sizes": <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes.html>
 - OrcaSlicer issue #14144, "No nozzle size selector in the sidebar for non-BBL multi-extruder printers": <https://github.com/OrcaSlicer/OrcaSlicer/issues/14144>
