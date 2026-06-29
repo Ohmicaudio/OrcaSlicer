@@ -9,6 +9,9 @@
 Newest first:
 
 ```text
+7eae238 planner: add AMP debug artifact writer utility
+fd62495 docs: design AMP debug artifact writer
+084fd6f docs: update AMP branch status after serializer scaffold
 9f3e25a planner: add AMP debug artifact JSON serializer
 aa496ad docs: update AMP branch status after debug artifact scaffold
 c5cb5e2 planner: add AMP debug artifact value types
@@ -50,11 +53,16 @@ e491cbf docs: add AMP v0.2 architecture and read-only prototype plan
 - Debug artifact data remains in-memory only.
 - AMP debug artifact JSON serializer exists.
 - The serializer is in-memory only and returns `std::string`.
-- The serializer has no writer or filesystem output.
 - Deterministic JSON output is covered by focused tests.
-- Focused AMP tests pass with 81 assertions in 12 test cases.
+- AMP debug artifact writer utility exists.
+- The writer accepts an explicit output path and already-serialized JSON string.
+- The writer writes the serialized string exactly as provided and returns a success/failure result.
+- The writer overwrites existing files deterministically when called directly.
+- The writer has no default output path and is not called from production slicing paths.
+- Focused AMP tests pass with 97 assertions in 16 test cases.
 - PrintObject sidecar design exists.
 - Read-only debug artifact design exists.
+- Debug artifact writer design exists.
 - AMP risk register exists.
 - AMP read-only integration map exists.
 - AMP prior-art research exists.
@@ -65,10 +73,9 @@ e491cbf docs: add AMP v0.2 architecture and read-only prototype plan
 - No PrintObject integration.
 - No sidecar cache attached to `PrintObject`.
 - No read-only geometry observation.
-- No debug artifact output.
-- No debug artifact writer.
-- No filesystem output.
-- No output path handling.
+- No production debug artifact output.
+- No default filesystem output.
+- No production output path handling.
 - No geometry scoring.
 - No bead-width influence.
 - No Arachne integration.
@@ -108,11 +115,15 @@ Current AMP code references are limited to:
   - `src/libslic3r/AdaptiveManufacturingDebugArtifactSerializer.hpp`
   - `src/libslic3r/AdaptiveManufacturingDebugArtifactSerializer.cpp`
   - `tests/libslic3r/test_adaptive_manufacturing_debug_artifact_serializer.cpp`
+- Debug artifact writer utility:
+  - `src/libslic3r/AdaptiveManufacturingDebugArtifactWriter.hpp`
+  - `src/libslic3r/AdaptiveManufacturingDebugArtifactWriter.cpp`
+  - `tests/libslic3r/test_adaptive_manufacturing_debug_artifact_writer.cpp`
 - Build registration:
   - `src/libslic3r/CMakeLists.txt`
   - `tests/libslic3r/CMakeLists.txt`
 
-`adaptive_manufacturing_enable` is not consumed by production slicing code. `AdaptiveManufacturingPlanner` is not called from `PrintObject`, `LayerRegion`, `Flow`, `PerimeterGenerator`, Arachne, G-code export, UI, profiles, or Snapmaker validation. `AdaptiveManufacturingSidecar` is referenced only by its own source/header, its unit test, and CMake/build registration. `AdaptiveManufacturingDebugArtifact` is referenced only by its own source/header, its unit test, the serializer, and CMake/build registration. `AdaptiveManufacturingDebugArtifactSerializer` is referenced only by its own source/header, its unit test, and CMake/build registration.
+`adaptive_manufacturing_enable` is not consumed by production slicing code. `AdaptiveManufacturingPlanner` is not called from `PrintObject`, `LayerRegion`, `Flow`, `PerimeterGenerator`, Arachne, G-code export, UI, profiles, or Snapmaker validation. `AdaptiveManufacturingSidecar` is referenced only by its own source/header, its unit test, and CMake/build registration. `AdaptiveManufacturingDebugArtifact` is referenced only by its own source/header, its unit test, the serializer, and CMake/build registration. `AdaptiveManufacturingDebugArtifactSerializer` is referenced only by its own source/header, its unit test, and CMake/build registration. `AdaptiveManufacturingDebugArtifactWriter` is referenced only by its own source/header, its unit test, and CMake/build registration.
 
 ## Recent Commit Boundaries
 
@@ -180,6 +191,22 @@ tests/libslic3r/CMakeLists.txt
 tests/libslic3r/test_adaptive_manufacturing_debug_artifact_serializer.cpp
 ```
 
+`fd62495 docs: design AMP debug artifact writer`
+
+```text
+docs/design/AMP_Debug_Artifact_Writer_Design.md
+```
+
+`7eae238 planner: add AMP debug artifact writer utility`
+
+```text
+src/libslic3r/AdaptiveManufacturingDebugArtifactWriter.cpp
+src/libslic3r/AdaptiveManufacturingDebugArtifactWriter.hpp
+src/libslic3r/CMakeLists.txt
+tests/libslic3r/CMakeLists.txt
+tests/libslic3r/test_adaptive_manufacturing_debug_artifact_writer.cpp
+```
+
 These commit boundaries do not modify `Flow`, `LayerRegion`, `PerimeterGenerator`, Arachne, G-code output, profiles, UI, Snapmaker nozzle validation, or `CalibUtils.cpp`.
 
 ## Documentation Status
@@ -188,6 +215,7 @@ These commit boundaries do not modify `Flow`, `LayerRegion`, `PerimeterGenerator
 - `docs/code_maps/AMP_ReadOnly_Integration_Map.md` is committed in `27bf35d`.
 - `docs/design/AMP_PrintObject_Sidecar_Cache_Design.md` is committed in `4e9c768`.
 - `docs/design/AMP_ReadOnly_Debug_Artifact_Design.md` is committed in `b05da70`.
+- `docs/design/AMP_Debug_Artifact_Writer_Design.md` is committed in `fd62495`.
 - `docs/research/Adaptive_Bead_Width_and_Mixed_Nozzle_Prior_Art.md` is committed in `e8bb8cc` and updated in `3e5c76f`.
 - `docs/submission/Snapmaker_Form_Answers_Final.md`, `docs/submission/Snapmaker_One_Page_Project_Summary_Final.md`, and `docs/submission/Snapmaker_Technical_Appendix_Final.md` are committed in `ee01d2a`.
 - `docs/reviews/AMP_v0.2_Architecture_Review.md` is committed in `601a3e0`.
@@ -211,22 +239,24 @@ New-Item -ItemType Directory -Force -Path ..\build-amp-focused | Out-Null
   -x c++ tests\catch_main.hpp `
   src\libslic3r\AdaptiveManufacturingDebugArtifact.cpp `
   src\libslic3r\AdaptiveManufacturingDebugArtifactSerializer.cpp `
+  src\libslic3r\AdaptiveManufacturingDebugArtifactWriter.cpp `
   src\libslic3r\AdaptiveManufacturingPlan.cpp `
   src\libslic3r\AdaptiveManufacturingPlanner.cpp `
   src\libslic3r\AdaptiveManufacturingSidecar.cpp `
   tests\libslic3r\test_adaptive_manufacturing_debug_artifact.cpp `
   tests\libslic3r\test_adaptive_manufacturing_debug_artifact_serializer.cpp `
+  tests\libslic3r\test_adaptive_manufacturing_debug_artifact_writer.cpp `
   tests\libslic3r\test_adaptive_manufacturing_plan.cpp `
   tests\libslic3r\test_adaptive_manufacturing_planner.cpp `
   tests\libslic3r\test_adaptive_manufacturing_sidecar.cpp `
   -o ..\build-amp-focused\amp_focused_tests.exe
-& ..\build-amp-focused\amp_focused_tests.exe "[AdaptiveManufacturingDebugArtifact],[AdaptiveManufacturingDebugArtifactSerializer],[AdaptiveManufacturingPlan],[AdaptiveManufacturingPlanner],[AdaptiveManufacturingSidecar]"
+& ..\build-amp-focused\amp_focused_tests.exe "[AdaptiveManufacturingDebugArtifact],[AdaptiveManufacturingDebugArtifactSerializer],[AdaptiveManufacturingDebugArtifactWriter],[AdaptiveManufacturingPlan],[AdaptiveManufacturingPlanner],[AdaptiveManufacturingSidecar]"
 ```
 
 Observed focused AMP result:
 
 ```text
-All tests passed (81 assertions in 12 test cases)
+All tests passed (97 assertions in 16 test cases)
 ```
 
 Full CMake configure command still stops before repo test target generation because Boost `1.83.0` is not available through `CMAKE_PREFIX_PATH` or `Boost_DIR`.
@@ -260,9 +290,9 @@ These are non-final submission drafts. The final submission packet is committed 
 
 ## Next Safe Implementation Step
 
-The next safe implementation step is a debug artifact writer design document.
+The next safe implementation step is a docs-only design for a future developer-only debug output option, after the writer utility audit is complete.
 
-That future step should define how a later developer-only writer would be introduced without implementing it yet. It must not emit files, write to the filesystem, add output path handling, consume `adaptive_manufacturing_enable`, wire into `PrintObject`, inspect geometry, or change slicing output.
+That future design must keep output optional and developer-only, must not consume `adaptive_manufacturing_enable` as an output trigger, must not wire into `PrintObject`, must not inspect geometry, and must not change slicing output.
 
 ## Forbidden Implementation Areas
 
@@ -284,10 +314,9 @@ Do not implement:
 
 - geometry scoring,
 - sidecar cache production integration,
-- debug artifact writing,
-- filesystem output,
+- production debug artifact writing,
+- default filesystem output,
 - PrintObject integration,
-- debug artifact writer implementation,
-- output path handling,
+- production output path handling,
 - bead-width influence,
 - physical mixed-nozzle behavior.
