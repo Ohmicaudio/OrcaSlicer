@@ -264,3 +264,20 @@ TEST_CASE("DynamicPrintConfig keeps ordinary filament types unchanged", "[Config
     CHECK(config.get_filament_type(display_type, 0) == "PLA");
     CHECK(display_type == "PLA");
 }
+
+TEST_CASE("Adaptive manufacturing planner flag is hidden and disabled by default", "[Config]")
+{
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+
+    const ConfigOptionDef *def = print_config_def.get("adaptive_manufacturing_enable");
+    REQUIRE(def != nullptr);
+    CHECK(def->mode == comDevelop);
+    REQUIRE(config.opt<ConfigOptionBool>("adaptive_manufacturing_enable") != nullptr);
+    CHECK(config.opt<ConfigOptionBool>("adaptive_manufacturing_enable")->getBool() == false);
+
+    REQUIRE_NOTHROW(config.set_deserialize_strict("adaptive_manufacturing_enable", "1"));
+    CHECK(config.opt<ConfigOptionBool>("adaptive_manufacturing_enable")->getBool() == true);
+
+    REQUIRE_NOTHROW(config.set_deserialize_strict("adaptive_manufacturing_enable", "0"));
+    CHECK(config.opt<ConfigOptionBool>("adaptive_manufacturing_enable")->getBool() == false);
+}

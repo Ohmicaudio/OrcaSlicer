@@ -6259,6 +6259,13 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("adaptive_manufacturing_enable", coBool);
+    def->label = L("Adaptive manufacturing planner");
+    def->category = L("Quality");
+    def->tooltip = L("Enable experimental read-only Adaptive Manufacturing Planner diagnostics. This setting does not change generated toolpaths or G-code.");
+    def->mode = comDevelop;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("wall_generator", coEnum);
     def->label = L("Wall generator");
     def->category = L("Quality");
