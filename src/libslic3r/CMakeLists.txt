@@ -25,6 +25,8 @@ set(lisbslic3r_sources
     AABBTreeLines.hpp
     AdaptiveManufacturingDebugArtifact.cpp
     AdaptiveManufacturingDebugArtifact.hpp
+    AdaptiveManufacturingDebugArtifactSerializer.cpp
+    AdaptiveManufacturingDebugArtifactSerializer.hpp
     AdaptiveManufacturingPlan.cpp
     AdaptiveManufacturingPlan.hpp
     AdaptiveManufacturingPlanner.cpp
