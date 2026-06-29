@@ -35,6 +35,7 @@ src/Snapmaker_Orca-doc/
 **/filament_full/
 /deps/DL_CACHE/
 /deps/DL_CACHE
+/outputs/
 **/.flatpak-builder/
 resources/profiles/user/default
 *.code-workspace
