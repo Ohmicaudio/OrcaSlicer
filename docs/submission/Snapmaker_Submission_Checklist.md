@@ -6,7 +6,7 @@
 - Tagline: A safety-first path toward geometry-aware manufacturing planning for Snapmaker U1.
 - GitHub URL: <https://github.com/Ohmicaudio/OrcaSlicer>
 - Project branch URL: <https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy>
-- Public community post URL placeholder: `[TBD: Snapmaker community post URL]`
+- Public community post URL: <https://forum.snapmaker.com/t/adaptive-manufacturing-planner-for-u1-bead-widths-first-mixed-nozzles-later/42359>
 - Contact email: `support@ohmicaudio.com`
 
 ## B. Current Technical Status
@@ -46,7 +46,7 @@
 1. Publish repo/fork.
 2. Add GitHub URL to final submission docs.
 3. Post Snapmaker community thread.
-4. Add community post URL to checklist.
+4. Community post URL added to checklist.
 5. Submit Snapmaker Innovation Fund form.
 6. Send `docs/Snapmaker_Email_Rev2.md` to `community@snapmaker.com` with GitHub link.
 7. Keep building benchmark evidence.

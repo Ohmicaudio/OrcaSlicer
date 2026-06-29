@@ -37,7 +37,9 @@ I am reaching out for three reasons:
 
 Public branch: https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy
 
-I also posted the project to the Snapmaker forum under the title "Adaptive Manufacturing Planner for U1: bead widths first, mixed nozzles later." Because this is a new forum account, the post is currently pending moderation. I can send the public topic URL once it is approved.
+I also posted the project to the Snapmaker forum under the title "Adaptive Manufacturing Planner for U1: bead widths first, mixed nozzles later."
+
+Community post: https://forum.snapmaker.com/t/adaptive-manufacturing-planner-for-u1-bead-widths-first-mixed-nozzles-later/42359
 
 I believe this project could help demonstrate the U1 as more than a multi-color printer. It could show the U1 as a practical multi-tool manufacturing platform where different tools are selected intelligently based on the geometry and purpose of the part.
 
