@@ -2,7 +2,7 @@
 
 ## Scope
 
-This note records the local verification state for commit `b963d984219da21da62a8e9d56d76948a52a8440` (`config: add hidden adaptive manufacturing flag`).
+This note records the local verification state for the AMP hidden config flag, stock fallback value types, and no-op planner facade through commit `d1b1915` (`planner: add no-op AMP planner facade`).
 
 No slicer behavior changes were made during this verification pass.
 
@@ -96,7 +96,7 @@ Working local CMake path:
 C:\Users\d\Documents\Codex\2026-06-28\finish-the-apps-administrator-private-model\work\tools\cmake-3.31.8-windows-x86_64\bin\cmake.exe
 ```
 
-## Smallest relevant config test build attempt
+## Full CMake configure attempt
 
 Command attempted:
 
@@ -135,6 +135,40 @@ CMake Error at CMakeLists.txt:514 (find_package):
     BoostConfig.cmake
     boost-config.cmake
 ```
+
+Latest command attempted:
+
+```powershell
+& "C:\Users\d\Documents\Codex\2026-06-28\finish-the-apps-administrator-private-model\work\tools\cmake-3.31.8-windows-x86_64\bin\cmake.exe" `
+  -S "C:\Users\d\Documents\Codex\2026-06-28\finish-the-apps-administrator-private-model\work\Snapmaker-OrcaSlicer" `
+  -B "C:\Users\d\Documents\Codex\2026-06-28\finish-the-apps-administrator-private-model\work\build-snapmaker-orca-amp-tests" `
+  -G Ninja `
+  -DCMAKE_BUILD_TYPE=Debug `
+  -DBUILD_TESTS=ON `
+  -DSLIC3R_GUI=OFF `
+  -DCMAKE_C_COMPILER="C:\Users\d\tools\winlibs-gcc-15.1.0-ucrt\mingw64\bin\gcc.exe" `
+  -DCMAKE_CXX_COMPILER="C:\Users\d\tools\winlibs-gcc-15.1.0-ucrt\mingw64\bin\g++.exe"
+```
+
+Latest blocking error:
+
+```text
+CMake Error at CMakeLists.txt:514 (find_package):
+  By not providing "FindBoost.cmake" in CMAKE_MODULE_PATH this project has
+  asked CMake to find a package configuration file provided by "Boost", but
+  CMake did not find one.
+
+  Could not find a package configuration file provided by "Boost" (requested
+  version 1.83.0) with any of the following names:
+
+    BoostConfig.cmake
+    boost-config.cmake
+
+  Add the installation prefix of "Boost" to CMAKE_PREFIX_PATH or set
+  "Boost_DIR" to a directory containing one of the above files.
+```
+
+Full generated test target execution remains blocked because CMake configure stops before test targets are generated.
 
 ## Local toolchain versions
 
@@ -183,6 +217,42 @@ Both commands exited with code 0.
 
 This confirms the new AMP value-type files compile as standalone translation units. It does not prove the full `libslic3r_tests` target builds or runs, because full CMake configure still stops at the missing Boost `1.83.0` dependency package before test targets are generated.
 
+## Focused AMP Catch test
+
+Command:
+
+```powershell
+New-Item -ItemType Directory -Force -Path ..\build-amp-focused | Out-Null
+& "C:\Users\d\tools\winlibs-gcc-15.1.0-ucrt\mingw64\bin\g++.exe" `
+  -std=c++17 `
+  -Isrc `
+  -Itests `
+  -Ideps `
+  -x c++ tests\catch_main.hpp `
+  src\libslic3r\AdaptiveManufacturingPlan.cpp `
+  src\libslic3r\AdaptiveManufacturingPlanner.cpp `
+  tests\libslic3r\test_adaptive_manufacturing_plan.cpp `
+  tests\libslic3r\test_adaptive_manufacturing_planner.cpp `
+  -o ..\build-amp-focused\amp_focused_tests.exe
+& ..\build-amp-focused\amp_focused_tests.exe "[AdaptiveManufacturingPlan],[AdaptiveManufacturingPlanner]"
+```
+
+Observed result:
+
+```text
+Filters: [AdaptiveManufacturingPlan],[AdaptiveManufacturingPlanner]
+Testing Adaptive manufacturing planner facade returns stock fallback
+Passed in 7e-06 [seconds]
+
+Testing Adaptive manufacturing stock fallback is conservative and deterministic
+Passed in 5e-06 [seconds]
+
+===============================================================================
+All tests passed (13 assertions in 2 test cases)
+```
+
+This focused test verifies the stock fallback value types and no-op planner facade without generating or executing the full repo test target.
+
 ## Next recommended fix
 
 The immediate CMake version mismatch is resolved by using local CMake `3.31.8`.
@@ -221,6 +291,4 @@ Alternative:
 
 - Install Visual Studio 2022 and run `build_release_vs2022.bat deps`, then configure with the generated VS2022 dependency prefix.
 
-Full test execution remains blocked locally until the dependency prefix is available.
-
-Do not start the no-op Adaptive Manufacturing Planner scaffold until the config test binary builds and the focused config test runs, or until this dependency setup blocker is resolved in a repeatable way.
+Full repo test execution remains blocked locally until the dependency prefix is available.
