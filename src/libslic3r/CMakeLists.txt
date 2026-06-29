@@ -25,6 +25,8 @@ set(lisbslic3r_sources
     AABBTreeLines.hpp
     AdaptiveManufacturingPlan.cpp
     AdaptiveManufacturingPlan.hpp
+    AdaptiveManufacturingPlanner.cpp
+    AdaptiveManufacturingPlanner.hpp
     Algorithm/LineSplit.cpp
     Algorithm/LineSplit.hpp
     Algorithm/RegionExpansion.cpp
