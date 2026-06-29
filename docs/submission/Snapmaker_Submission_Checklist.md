@@ -7,7 +7,7 @@
 - GitHub URL: <https://github.com/Ohmicaudio/OrcaSlicer>
 - Project branch URL: <https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy>
 - Public community post URL placeholder: `[TBD: Snapmaker community post URL]`
-- Contact email: `[confirm public project contact email before submission]`
+- Contact email: `support@ohmicaudio.com`
 
 ## B. Current Technical Status
 

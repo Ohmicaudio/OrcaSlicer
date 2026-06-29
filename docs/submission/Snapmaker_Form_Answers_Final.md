@@ -101,4 +101,4 @@ The business case:
 
 - **Name:** *[applicant name]*
 - **Organization:** Ohmic Audio Labs (functional benchmark parts: speaker adapters, LED rings, amplifier mounts, trim, fabrication fixtures)
-- **Contact:** *[confirm public project contact email before submission]*
+- **Contact:** support@ohmicaudio.com
