@@ -1,0 +1,55 @@
+name: AMP U1 constraint feedback
+description: Share U1 hardware, nozzle, calibration, toolchange, or purge constraints relevant to AMP
+title: "[AMP U1 Constraint]: "
+labels: ["amp", "u1-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for U1-specific constraints that should shape AMP validation.
+
+        Stage 2 mixed physical nozzle behavior remains blocked until U1 hardware validation and Snapmaker guidance are available.
+  - type: input
+    id: hardware_firmware
+    attributes:
+      label: U1 hardware/firmware version
+      description: Provide the U1 hardware revision, firmware version, or Snapmaker Orca version if known.
+      placeholder: "U1 firmware/version, Snapmaker Orca version, or unknown"
+    validations:
+      required: false
+  - type: textarea
+    id: nozzle_toolhead_setup
+    attributes:
+      label: Nozzle/toolhead setup
+      description: Describe the toolheads and nozzle sizes/materials involved.
+      placeholder: "Example: T1 0.4 brass, T2 0.6 hardened, etc."
+    validations:
+      required: false
+  - type: textarea
+    id: calibration_concern
+    attributes:
+      label: Calibration concern
+      description: Describe any toolhead offset, Z offset, nozzle-size, or calibration behavior that matters.
+    validations:
+      required: false
+  - type: textarea
+    id: toolchange_purge
+    attributes:
+      label: Toolchange or purge observation
+      description: Describe toolchange timing, purge/wipe behavior, reliability issues, or related observations.
+    validations:
+      required: false
+  - type: textarea
+    id: relevant_scenario
+    attributes:
+      label: Relevant model or print scenario
+      description: Describe the part, geometry, or print workflow where this constraint appears.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Add links, screenshots, photos, logs, or related forum posts if useful.
+    validations:
+      required: false

@@ -1,0 +1,47 @@
+name: AMP surface color use case
+description: Suggest a future visible-surface color/detail planning use case
+title: "[AMP Surface Color]: "
+labels: ["amp", "surface-color"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for future AMP surface color planner ideas.
+
+        This is a future extension track. Current AMP work does not implement FullSpectrum, local-Z, or behavior-changing color planning.
+  - type: input
+    id: part_type
+    attributes:
+      label: Part type
+      description: What kind of part is this?
+      placeholder: "Logo plate, speaker ring, trim badge, label, display panel, etc."
+    validations:
+      required: true
+  - type: textarea
+    id: visible_region
+    attributes:
+      label: Visible color/detail region
+      description: Describe which surfaces or regions need color/detail treatment.
+    validations:
+      required: true
+  - type: textarea
+    id: fullspectrum_relevance
+    attributes:
+      label: FullSpectrum/CMYK-style relevance
+      description: Explain whether optical color blending, virtual mixed filament, or visible-surface-only color would help.
+    validations:
+      required: true
+  - type: textarea
+    id: outer_surface_benefit
+    attributes:
+      label: Why outer-surface-only color would help
+      description: Explain why the whole model should not need color-mixing cadence.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks or expected visual artifacts
+      description: Note likely issues such as banding, opacity, sloped surfaces, toolchange overhead, or surface defects.
+    validations:
+      required: false

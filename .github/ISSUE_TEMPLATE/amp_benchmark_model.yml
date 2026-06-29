@@ -1,0 +1,79 @@
+name: AMP benchmark model
+description: Suggest a model for AMP Stage 1 profile-only benchmark Run 001
+title: "[AMP Benchmark Model]: "
+labels: ["amp", "benchmark"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a model for Adaptive Manufacturing Planner (AMP).
+
+        Stage 1 Run 001 is profile-only: stock U1 0.4 profile vs experimental effective-width profile. Do not use this template for print-quality, strength, or mixed-nozzle claims.
+  - type: dropdown
+    id: model_category
+    attributes:
+      label: Model category
+      description: Which benchmark category best fits this model?
+      multiple: true
+      options:
+        - Thin-wall detail
+        - Large bracket or box
+        - Cosmetic top-surface detail
+        - Embossed/debossed text
+        - Speaker adapter ring
+        - LED speaker ring face
+        - Curved badge
+        - Sloped surface torture test
+        - Multi-region/modifier model
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: model_url
+    attributes:
+      label: Model URL or attachment note
+      description: Link the model source, or describe how it can be shared.
+      placeholder: "Example: Printables/Thingiverse/GitHub URL, or note that a file can be attached."
+    validations:
+      required: true
+  - type: textarea
+    id: intended_test
+    attributes:
+      label: What is it meant to test?
+      description: Describe the geometry or slicer behavior this model should stress.
+      placeholder: "Thin text, small holes, broad infill, curved cosmetic wall, sloped surface, etc."
+    validations:
+      required: true
+  - type: textarea
+    id: expected_failure_mode
+    attributes:
+      label: Expected failure mode
+      description: What bad behavior would make this a useful torture model?
+      placeholder: "Missing thin walls, coarse top surface, overfill, path instability, support issues, etc."
+    validations:
+      required: false
+  - type: textarea
+    id: license_permission
+    attributes:
+      label: License or permission
+      description: State the model license or whether it can be used publicly for benchmark documentation.
+      placeholder: "License URL, Creative Commons type, original author permission, private-use only, etc."
+    validations:
+      required: true
+  - type: dropdown
+    id: printed_on_u1
+    attributes:
+      label: Has it been printed on U1?
+      options:
+        - Yes
+        - No
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: photos
+    attributes:
+      label: Photos or preview images
+      description: Optional photos, screenshots, or notes about known U1 behavior.
+    validations:
+      required: false
