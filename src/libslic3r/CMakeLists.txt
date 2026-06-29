@@ -27,6 +27,8 @@ set(lisbslic3r_sources
     AdaptiveManufacturingPlan.hpp
     AdaptiveManufacturingPlanner.cpp
     AdaptiveManufacturingPlanner.hpp
+    AdaptiveManufacturingSidecar.cpp
+    AdaptiveManufacturingSidecar.hpp
     Algorithm/LineSplit.cpp
     Algorithm/LineSplit.hpp
     Algorithm/RegionExpansion.cpp
