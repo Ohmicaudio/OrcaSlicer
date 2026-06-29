@@ -37,6 +37,8 @@ I am reaching out for three reasons:
 
 Public branch: https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy
 
+I also posted the project to the Snapmaker forum under the title "Adaptive Manufacturing Planner for U1: bead widths first, mixed nozzles later." Because this is a new forum account, the post is currently pending moderation. I can send the public topic URL once it is approved.
+
 I believe this project could help demonstrate the U1 as more than a multi-color printer. It could show the U1 as a practical multi-tool manufacturing platform where different tools are selected intelligently based on the geometry and purpose of the part.
 
 For validation, I plan to use real functional parts rather than benchmark toys, including speaker adapters, LED speaker rings, amplifier mounting components, interior trim parts, and fabrication fixtures from Ohmic Audio Labs.
