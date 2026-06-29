@@ -46,11 +46,20 @@ The current public ask is Stage 1 benchmark Run 001 test models.
 
 ## Pending Channels
 
-### Snapmaker U1 Facebook Group
+### Facebook Profile / Snapmaker U1 Community Group
 
-- Status: not posted yet
-- URL: pending
-- Planned ask: practical U1 test models and failure cases for Stage 1 benchmark Run 001.
+- Status: profile post published and shared to the public Snapmaker U1 Community group.
+- Posted: 2026-06-29 11:02:40 -04:00
+- Profile post URL: unavailable from Facebook UI; post was visible on Joshua Lane's public profile after publishing.
+- Group location: <https://www.facebook.com/groups/2966432890215724/>
+- Group share URL: unavailable from Facebook UI; share was visible in the Snapmaker U1 Community group feed.
+- Moderation status: no pending-review or moderation message was shown after sharing.
+- Immediate comments/reactions: none visible immediately after posting.
+- Main ask: practical U1 test models and failure cases for Stage 1 benchmark Run 001.
+- Follow-up actions:
+  - Monitor the group share for model suggestions and failure cases.
+  - Record useful suggestions in the Stage 1 benchmark notes.
+  - Do not post to additional Facebook groups until the first share has time to breathe.
 
 ### Snapmaker Discord
 

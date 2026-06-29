@@ -21,7 +21,10 @@
 - Support ticket status: awaiting response.
 - Reddit `r/snapmaker` Stage 1 benchmark model request posted.
 - Reddit URL: <https://www.reddit.com/r/snapmaker/comments/1uiu84u/looking_for_u1_test_models_for_adaptive/>
-- Facebook and Discord promotion: pending.
+- Facebook profile post published and shared to the public Snapmaker U1 Community group.
+- Facebook group location: <https://www.facebook.com/groups/2966432890215724/>
+- Facebook group share status: visible in group feed; no pending-review or moderation message shown.
+- Discord promotion: pending.
 
 ## 3. Public Links
 
@@ -29,6 +32,7 @@
 - AMP branch: <https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy>
 - Forum URL: <https://forum.snapmaker.com/t/adaptive-manufacturing-planner-for-u1-bead-widths-first-mixed-nozzles-later/42359>
 - Reddit URL: <https://www.reddit.com/r/snapmaker/comments/1uiu84u/looking_for_u1_test_models_for_adaptive/>
+- Facebook U1 group location: <https://www.facebook.com/groups/2966432890215724/>
 
 ## 4. Current Technical State
 
