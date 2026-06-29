@@ -49,6 +49,40 @@ Downloaded file size during Run 001 preparation:
 11285384 bytes
 ```
 
+## User-Provided Local Models
+
+User-provided models are copied into the ignored output workspace for local benchmark use only. Do not commit these files unless the user explicitly confirms redistribution permission and the file size is appropriate.
+
+| Local filename | Model title | Source | Author/source | License | Category | Reason for inclusion |
+| --- | --- | --- | --- | --- | --- | --- |
+| `Floating+Island.3mf` | Minka Skyland - Levitating Island | User-provided local file from `C:\Users\d\Downloads\Floating+Island.3mf` | Entropy, per embedded 3MF metadata | Standard Digital File License, per embedded 3MF metadata | Multi-color / multi-region Bambu 3MF | Useful as a complex multi-object, multi-color, visible-surface planning candidate. Good future stress case for surface/color region mapping and tool/material assignment, but not a public redistributable benchmark asset without permission. |
+
+Copied to:
+
+```text
+outputs/amp_run_001/models/user_provided/Floating+Island.3mf
+```
+
+Observed embedded metadata:
+
+- Application: `BambuStudio-02.07.01.62`
+- Printer model: `Bambu Lab X2D`
+- Nozzle diameters: `0.4, 0.4`
+- Layer height: `0.2`
+- Wall generator: `classic`
+- Referenced object count: `27`
+- Referenced extruders: `1, 2, 3, 4, 5, 6`
+- Filament types: `PLA, PLA, PLA, PLA, PLA, PLA, PLA`
+- Filament colors: `#3F8E43, #D6CCA3, #5E4B3C, #C8CACA, #B8CDE980, #F5DBAB80, #0A2989`
+- Total face count from 3MF object metadata: `11372080`
+
+Notes:
+
+- This is a large file, approximately `126438172` bytes.
+- Treat as a local candidate only.
+- Do not use this file to validate U1 mixed physical nozzle behavior.
+- If used in Run 001, record it as a Bambu-origin multi-color 3MF imported for profile-only comparison, not as a U1-native project.
+
 ## Models Not Yet Added
 
 Additional community/public models should be added only after source, license, author, and redistribution constraints are clear.

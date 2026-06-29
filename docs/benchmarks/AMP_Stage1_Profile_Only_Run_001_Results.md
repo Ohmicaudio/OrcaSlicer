@@ -93,6 +93,7 @@ wrote 0 row(s)
 | `led_ring_face.stl` | generated | LED speaker ring face | not generated | not generated | slicing blocked |
 | `sloped_surface_torture.stl` | generated | Sloped surface torture | not generated | not generated | slicing blocked |
 | `3DBenchy.stl` | downloaded public model | General slicer torture model | not generated | not generated | slicing blocked |
+| `Floating+Island.3mf` | user-provided local model | Multi-color / multi-region Bambu 3MF | not generated | not generated | slicing blocked |
 
 ## Stock vs Experimental Metrics
 
@@ -107,15 +108,19 @@ No stock or experimental G-code was generated during this run because the requir
 | `led_ring_face.stl` | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | blocked: no Snapmaker Orca/OrcaSlicer executable |
 | `sloped_surface_torture.stl` | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | blocked: no Snapmaker Orca/OrcaSlicer executable |
 | `3DBenchy.stl` | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | blocked: no Snapmaker Orca/OrcaSlicer executable |
+| `Floating+Island.3mf` | unavailable | unavailable | unavailable | unavailable | unavailable | unavailable | blocked: no Snapmaker Orca/OrcaSlicer executable |
 
 ## Observations
 
 - Synthetic benchmark STL generation works without external Python dependencies.
 - 3DBenchy was downloaded into the ignored output workspace and recorded in the model manifest.
+- `Floating+Island.3mf` was copied into the ignored output workspace as a user-provided local candidate and recorded in the model manifest.
+- The `Floating+Island.3mf` package appears useful for future multi-color / multi-region inspection because its embedded metadata references 27 objects, 6 extruders, and 7 PLA filament/color entries.
 - G-code metrics tooling works on the benchmark output directory and produces empty CSV/summary outputs when no G-code files are present.
 - The local repository does not contain a built Snapmaker Orca/OrcaSlicer executable.
 - No local `OrcaSlicer`, `orca-slicer`, `Snapmaker_Orca`, `Snapmaker-Orca`, or `prusa-slicer` command was found on `PATH`.
 - AnycubicSlicerNext exposes similar command-line concepts such as `--load-settings`, `--outputdir`, and `--slice`, but it is not the target executable for this U1 profile-only benchmark.
+- `Floating+Island.3mf` is a Bambu-origin project and must not be treated as a U1-native project or used to validate U1 mixed physical nozzle behavior.
 
 ## Failures / Blockers
 
