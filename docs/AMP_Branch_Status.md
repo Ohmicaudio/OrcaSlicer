@@ -9,6 +9,9 @@
 Newest first:
 
 ```text
+c5cb5e2 planner: add AMP debug artifact value types
+b05da70 docs: design AMP read-only debug artifact
+922204c docs: update AMP branch status after sidecar scaffold
 7205998 planner: add AMP sidecar cache value types
 2c4569d docs: add revised Snapmaker outreach email
 601a3e0 docs: add AMP v0.2 architecture review
@@ -28,7 +31,6 @@ b0042fd docs: expand AMP risk register
 b963d98 config: add hidden adaptive manufacturing flag
 e491cbf docs: add AMP v0.2 architecture and read-only prototype plan
 2c63cd7 docs: add adaptive manufacturing planner specification
-3f8fb16 docs: define adaptive manufacturing planner
 ```
 
 ## What Exists Today
@@ -40,8 +42,14 @@ e491cbf docs: add AMP v0.2 architecture and read-only prototype plan
 - AMP sidecar cache value types exist.
 - The sidecar stores `AdaptiveManufacturingPlan` entries by object/layer/region key.
 - The sidecar remains unconsumed by production slicing paths.
-- Focused AMP tests pass with 37 assertions in 4 test cases.
+- AMP debug artifact value types exist.
+- Debug entries are deterministic by object/layer/region key.
+- Debug artifact schema version `0.1` exists.
+- Debug artifact data remains in-memory only.
+- No debug artifact serializer or writer exists.
+- Focused AMP tests pass with 72 assertions in 7 test cases.
 - PrintObject sidecar design exists.
+- Read-only debug artifact design exists.
 - AMP risk register exists.
 - AMP read-only integration map exists.
 - AMP prior-art research exists.
@@ -53,6 +61,9 @@ e491cbf docs: add AMP v0.2 architecture and read-only prototype plan
 - No sidecar cache attached to `PrintObject`.
 - No read-only geometry observation.
 - No debug artifact output.
+- No JSON serializer.
+- No debug artifact writer.
+- No filesystem output.
 - No geometry scoring.
 - No bead-width influence.
 - No Arachne integration.
@@ -84,11 +95,15 @@ Current AMP code references are limited to:
   - `src/libslic3r/AdaptiveManufacturingSidecar.hpp`
   - `src/libslic3r/AdaptiveManufacturingSidecar.cpp`
   - `tests/libslic3r/test_adaptive_manufacturing_sidecar.cpp`
+- Debug artifact value types:
+  - `src/libslic3r/AdaptiveManufacturingDebugArtifact.hpp`
+  - `src/libslic3r/AdaptiveManufacturingDebugArtifact.cpp`
+  - `tests/libslic3r/test_adaptive_manufacturing_debug_artifact.cpp`
 - Build registration:
   - `src/libslic3r/CMakeLists.txt`
   - `tests/libslic3r/CMakeLists.txt`
 
-`adaptive_manufacturing_enable` is not consumed by production slicing code. `AdaptiveManufacturingPlanner` is not called from `PrintObject`, `LayerRegion`, `Flow`, `PerimeterGenerator`, Arachne, G-code export, UI, profiles, or Snapmaker validation. `AdaptiveManufacturingSidecar` is referenced only by its own source/header, its unit test, and CMake/build registration.
+`adaptive_manufacturing_enable` is not consumed by production slicing code. `AdaptiveManufacturingPlanner` is not called from `PrintObject`, `LayerRegion`, `Flow`, `PerimeterGenerator`, Arachne, G-code export, UI, profiles, or Snapmaker validation. `AdaptiveManufacturingSidecar` is referenced only by its own source/header, its unit test, and CMake/build registration. `AdaptiveManufacturingDebugArtifact` is referenced only by its own source/header, its unit test, and CMake/build registration.
 
 ## Recent Commit Boundaries
 
@@ -136,6 +151,16 @@ tests/libslic3r/CMakeLists.txt
 tests/libslic3r/test_adaptive_manufacturing_sidecar.cpp
 ```
 
+`c5cb5e2 planner: add AMP debug artifact value types`
+
+```text
+src/libslic3r/AdaptiveManufacturingDebugArtifact.cpp
+src/libslic3r/AdaptiveManufacturingDebugArtifact.hpp
+src/libslic3r/CMakeLists.txt
+tests/libslic3r/CMakeLists.txt
+tests/libslic3r/test_adaptive_manufacturing_debug_artifact.cpp
+```
+
 These commit boundaries do not modify `Flow`, `LayerRegion`, `PerimeterGenerator`, Arachne, G-code output, profiles, UI, Snapmaker nozzle validation, or `CalibUtils.cpp`.
 
 ## Documentation Status
@@ -143,6 +168,7 @@ These commit boundaries do not modify `Flow`, `LayerRegion`, `PerimeterGenerator
 - `docs/risks/AMP_Project_Risk_Register_v0.2.md` is committed in `b0042fd`.
 - `docs/code_maps/AMP_ReadOnly_Integration_Map.md` is committed in `27bf35d`.
 - `docs/design/AMP_PrintObject_Sidecar_Cache_Design.md` is committed in `4e9c768`.
+- `docs/design/AMP_ReadOnly_Debug_Artifact_Design.md` is committed in `b05da70`.
 - `docs/research/Adaptive_Bead_Width_and_Mixed_Nozzle_Prior_Art.md` is committed in `e8bb8cc` and updated in `3e5c76f`.
 - `docs/submission/Snapmaker_Form_Answers_Final.md`, `docs/submission/Snapmaker_One_Page_Project_Summary_Final.md`, and `docs/submission/Snapmaker_Technical_Appendix_Final.md` are committed in `ee01d2a`.
 - `docs/reviews/AMP_v0.2_Architecture_Review.md` is committed in `601a3e0`.
@@ -164,20 +190,22 @@ New-Item -ItemType Directory -Force -Path ..\build-amp-focused | Out-Null
   -Itests `
   -Ideps `
   -x c++ tests\catch_main.hpp `
+  src\libslic3r\AdaptiveManufacturingDebugArtifact.cpp `
   src\libslic3r\AdaptiveManufacturingPlan.cpp `
   src\libslic3r\AdaptiveManufacturingPlanner.cpp `
   src\libslic3r\AdaptiveManufacturingSidecar.cpp `
+  tests\libslic3r\test_adaptive_manufacturing_debug_artifact.cpp `
   tests\libslic3r\test_adaptive_manufacturing_plan.cpp `
   tests\libslic3r\test_adaptive_manufacturing_planner.cpp `
   tests\libslic3r\test_adaptive_manufacturing_sidecar.cpp `
   -o ..\build-amp-focused\amp_focused_tests.exe
-& ..\build-amp-focused\amp_focused_tests.exe "[AdaptiveManufacturingPlan],[AdaptiveManufacturingPlanner],[AdaptiveManufacturingSidecar]"
+& ..\build-amp-focused\amp_focused_tests.exe "[AdaptiveManufacturingDebugArtifact],[AdaptiveManufacturingPlan],[AdaptiveManufacturingPlanner],[AdaptiveManufacturingSidecar]"
 ```
 
 Observed focused AMP result:
 
 ```text
-All tests passed (37 assertions in 4 test cases)
+All tests passed (72 assertions in 7 test cases)
 ```
 
 Full CMake configure command still stops before repo test target generation because Boost `1.83.0` is not available through `CMAKE_PREFIX_PATH` or `Boost_DIR`.
@@ -211,9 +239,9 @@ These are non-final submission drafts. The final submission packet is committed 
 
 ## Next Safe Implementation Step
 
-The next safe implementation step is a read-only debug artifact design document.
+The next safe implementation step is debug artifact serializer tests.
 
-That future document should describe how debug artifacts will be emitted later from completed planner-owned data without writing from `PrintObject::make_perimeters()` parallel execution or from `LayerRegion::make_perimeters()`. It should not implement debug artifact output.
+That future step should add tests for deterministic JSON serialization behavior before adding any serializer implementation. It must not emit files, write to the filesystem, consume `adaptive_manufacturing_enable`, wire into `PrintObject`, inspect geometry, or change slicing output.
 
 ## Forbidden Implementation Areas
 
@@ -236,5 +264,8 @@ Do not implement:
 - geometry scoring,
 - sidecar cache production integration,
 - debug artifact writing,
+- filesystem output,
+- PrintObject integration,
+- JSON serialization without tests first,
 - bead-width influence,
 - physical mixed-nozzle behavior.
