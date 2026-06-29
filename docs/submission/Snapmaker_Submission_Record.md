@@ -16,6 +16,9 @@
 - Forum post submitted under title: Adaptive Manufacturing Planner for U1: bead widths first, mixed nozzles later
 - Forum post approved and public.
 - Public forum URL: <https://forum.snapmaker.com/t/adaptive-manufacturing-planner-for-u1-bead-widths-first-mixed-nozzles-later/42359>
+- Support ticket submitted through the Snapmaker General Inquiry Form.
+- Support ticket subject: U1 engineering guidance request: mixed-nozzle validation constraints for Adaptive Manufacturing Planner
+- Support ticket status: awaiting response.
 
 ## 3. Public Links
 
