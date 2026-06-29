@@ -6,6 +6,8 @@ This document collects the next useful Adaptive Manufacturing Planner (AMP) work
 
 The goal is to keep momentum organized without drifting into behavior-changing slicer work too early.
 
+AMP should be framed as a FDM/FFF resolution-allocation planning layer. Snapmaker U1 is the first submitted validation platform, not the only possible platform.
+
 ## Current Ground Rules
 
 - Do not modify production slicer behavior without an explicit future milestone.
@@ -13,6 +15,25 @@ The goal is to keep momentum organized without drifting into behavior-changing s
 - Do not consume `adaptive_manufacturing_enable` from production slicing paths yet.
 - Do not claim print-time, strength, print quality, dimensional, bonding, or mixed-nozzle improvements without measured hardware results.
 - Keep Stage 2 physical mixed-nozzle behavior blocked until U1 hardware validation and Snapmaker guidance are available.
+- Keep the architecture portable where possible: single-nozzle Stage 1 work should remain useful without U1 hardware, and future toolchanger work should be guarded by platform-specific capability assumptions.
+
+## Hardware Tier Framing
+
+Use:
+
+- `docs/design/AMP_Hardware_Tiers_and_Resolution_Allocation.md`
+
+Public framing:
+
+```text
+Adaptive Manufacturing Planner is a FDM/FFF resolution-allocation planning layer. Snapmaker U1 is the first submitted validation platform.
+```
+
+Working tiers:
+
+- Tier 1: single-nozzle FDM/FFF profile-only bead-width, role-specific line-width, visible-surface, internal/bulk, and adaptive-layer-height characterization.
+- Tier 2: multi-material, IDEX, support-tool, material-region, and color/surface-region planning without mixed physical nozzle assumptions.
+- Tier 3: toolchanger and mixed-nozzle systems with hardware-specific validation.
 
 ## Immediate Public-Facing TODOs
 
@@ -32,6 +53,7 @@ Tasks:
 - Collect source URLs, licenses, units, and expected stress features.
 - Prefer functional models over novelty benchmark toys.
 - Keep all benchmark requests clear that this is profile-only validation.
+- Make clear that Stage 1 is useful beyond U1 because single-nozzle profile-only characterization is part of the core AMP resolution-allocation path.
 
 ### 2. Run Profile-Only Benchmark Pass
 
@@ -157,6 +179,7 @@ Next docs-only steps:
 - Create a surface color value-type design.
 - Create a safe public explanation separating optical blending from true pigment mixing.
 - Keep FullSpectrum-style surface color as an extension track, not part of the submitted mixed-nozzle AMP promise.
+- Treat this as Tier 2-style visible-surface planning: color/surface regions, skins, logos, text, badges, and trim can use the same "where does detail matter?" region logic without assuming physical mixed-nozzle printing.
 
 Do not implement local-Z, FullSpectrum interop, UI, or G-code behavior yet.
 
@@ -174,6 +197,8 @@ Blocked on:
 - Safe test model selection.
 
 No mixed physical nozzle behavior should be claimed or implemented until these are understood.
+
+When this track resumes, model it as platform-specific toolchanger capability work, not as U1 only core planner logic.
 
 ## Maintenance TODOs
 

@@ -57,7 +57,7 @@ This track should build on existing public work and should keep claims conservat
 - Prusa ColorMix reporting: Tom's Hardware describes Prusa's ColorMix direction as visually blending FDM filaments, notes banding and opacity/translucency limits, and describes a CMYKW direction.
   Source: <https://www.tomshardware.com/3d-printing/prusa-research-goes-full-spectrum-in-anticipation-of-indx>
 
-The safe language for this project is "CMYK-style optical color blending for visible surface regions." Do not describe this as true CMYK pigment mixing.
+The safe language for this project is "CMYK-style optical color blending for visible surface regions." Do not describe this as physical pigment mixing.
 
 ## Proposed Staged Roadmap
 
@@ -169,7 +169,7 @@ The first implementation, if this track is ever started, should be pure value ty
 - No geometry scoring yet.
 - No physical mixed-nozzle behavior.
 - No safety or validation bypasses.
-- No claims of accurate color reproduction before calibration prints.
+- No claims about calibrated color reproduction before calibration prints.
 - No assumptions that optical blending is equivalent to true pigment mixing.
 - No production consumption from `PrintObject`, `LayerRegion`, `Flow`, Arachne, `PerimeterGenerator`, G-code export, profiles, UI, Snapmaker validation, or `CalibUtils.cpp`.
 

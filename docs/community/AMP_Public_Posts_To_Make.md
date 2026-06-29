@@ -12,6 +12,12 @@ We are collecting Stage 1 test models for benchmark Run 001.
 
 That is stronger and cleaner than asking people to "look at the project." It gives the community a concrete way to contribute.
 
+General project framing:
+
+```text
+Adaptive Manufacturing Planner is a FDM/FFF resolution-allocation planning layer. Snapmaker U1 is the first submitted validation platform.
+```
+
 ## Public Links
 
 - Public branch: <https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy>
@@ -22,6 +28,8 @@ That is stronger and cleaner than asking people to "look at the project." It giv
 
 - Say "profile-only benchmark" for current Stage 1 validation.
 - Say "experimental effective-width profile" for the current test profile.
+- Say Stage 1 is useful for ordinary single-nozzle printers because it studies bead-width, line-width, visible-surface, and internal/bulk allocation before any toolchanger behavior.
+- Say U1 is the first submitted validation target, not the only possible platform.
 - Say AMP is behavior-neutral when discussing current code state.
 - Say no production slicer path consumes AMP yet.
 - Say Stage 2 mixed physical nozzle behavior remains blocked until U1 hardware validation.
@@ -102,6 +110,8 @@ Post:
 ```text
 I have started an open-source Snapmaker Orca branch called Adaptive Manufacturing Planner.
 
+AMP is a FDM/FFF resolution-allocation planning layer. Snapmaker U1 is the first submitted validation platform.
+
 Public branch:
 https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy
 
@@ -144,7 +154,7 @@ Status: draft only; use only in an appropriate Snapmaker U1 group
 Draft:
 
 ```text
-I have started an open-source Snapmaker U1 slicer project called Adaptive Manufacturing Planner.
+I have started an open-source FDM/FFF slicer project called Adaptive Manufacturing Planner. Snapmaker U1 is the first submitted validation platform.
 
 Project branch:
 https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy
@@ -182,6 +192,8 @@ Do not paste a giant announcement first. Ask where it belongs:
 ```text
 Hey everyone - I am working on an open-source Snapmaker Orca branch called Adaptive Manufacturing Planner.
 
+AMP is a FDM/FFF resolution-allocation planning layer. Snapmaker U1 is the first submitted validation platform.
+
 It is behavior-neutral right now: no G-code changes, no production slicer path consumes it, and no Snapmaker validation/safety paths are bypassed.
 
 I just added a Stage 1 profile-only benchmark package and I am looking for U1 test models / failure cases.
@@ -201,7 +213,7 @@ stock U1 0.4 profile vs experimental effective-width/Arachne profile.
 Useful model categories:
 thin walls, brackets, text/logos, speaker rings, LED ring faces, curved badges, sloped surfaces, and parts where visible detail matters but internal bulk could potentially print faster.
 
-No mixed-nozzle behavior exists yet. Stage 2 remains blocked until U1 hardware validation.
+No mixed-nozzle behavior exists yet. Stage 2 remains future hardware-specific work and remains blocked until U1 hardware validation.
 ```
 
 ### 5. GitHub Repository Status Update
@@ -244,7 +256,7 @@ Where:
 Draft:
 
 ```text
-We have opened a public Snapmaker Orca branch for Adaptive Manufacturing Planner, a staged slicer research project focused on balancing visible detail, internal strength, and print time.
+We have opened a public Snapmaker Orca branch for Adaptive Manufacturing Planner, a staged FDM/FFF resolution-allocation research project focused on preserving visible detail where it matters while characterizing internal/bulk regions separately.
 
 Current work is intentionally conservative: behavior-neutral scaffolding, tests, documentation, and a Stage 1 profile-only benchmark package. No production slicer path consumes AMP yet, and no G-code or Snapmaker validation behavior has been changed.
 
