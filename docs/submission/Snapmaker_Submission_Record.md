@@ -19,12 +19,16 @@
 - Support ticket submitted through the Snapmaker General Inquiry Form.
 - Support ticket subject: U1 engineering guidance request: mixed-nozzle validation constraints for Adaptive Manufacturing Planner
 - Support ticket status: awaiting response.
+- Reddit `r/snapmaker` Stage 1 benchmark model request posted.
+- Reddit URL: <https://www.reddit.com/r/snapmaker/comments/1uiu84u/looking_for_u1_test_models_for_adaptive/>
+- Facebook and Discord promotion: pending.
 
 ## 3. Public Links
 
 - GitHub repo: <https://github.com/Ohmicaudio/OrcaSlicer>
 - AMP branch: <https://github.com/Ohmicaudio/OrcaSlicer/tree/u1-adaptive-nozzle-strategy>
 - Forum URL: <https://forum.snapmaker.com/t/adaptive-manufacturing-planner-for-u1-bead-widths-first-mixed-nozzles-later/42359>
+- Reddit URL: <https://www.reddit.com/r/snapmaker/comments/1uiu84u/looking_for_u1_test_models_for_adaptive/>
 
 ## 4. Current Technical State
 
