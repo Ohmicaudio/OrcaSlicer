@@ -82,6 +82,9 @@ e491cbf docs: add AMP v0.2 architecture and read-only prototype plan
 - AMP risk register exists.
 - AMP read-only integration map exists.
 - AMP prior-art research exists.
+- Snapmaker U1 mixed-nozzle technical constraints are documented.
+- Stage 2A Fluidd-only validation path is identified.
+- Stage 2B touchscreen-compatible path is blocked pending logical-to-physical toolhead mapping support.
 - No production slicer path consumes AMP.
 
 ## What Does Not Exist Yet
@@ -376,6 +379,8 @@ Do not modify or consume AMP from:
 - `CalibUtils.cpp`
 
 Stage 2 mixed physical nozzle behavior remains blocked until U1 hardware access and validation. Do not bypass `CalibUtils.cpp` or Snapmaker nozzle validation. Do not write planner/debug artifacts inside the `PrintObject::make_perimeters()` `tbb::parallel_for`. The first real observation pass must be serial and deterministic.
+
+For U1 specifically, touchscreen-compatible mixed physical nozzle behavior remains blocked pending logical-to-physical toolhead mapping support. Any future Fluidd-only validation path must be developer-only and hardware-validated before it can influence slicer output.
 
 Do not implement:
 

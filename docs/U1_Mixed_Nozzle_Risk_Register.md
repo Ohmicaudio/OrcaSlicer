@@ -6,6 +6,25 @@ This register covers Stage 2: adaptive nozzle selection with U1 toolheads using 
 
 ## Risks
 
+### Snapmaker Technical Response Update - June 30, 2026
+
+Snapmaker support clarified the current U1 behavior:
+
+- Touchscreen-started prints compare every used toolhead's configured nozzle size against the first `nozzle_diameter` value in the G-code.
+- Touchscreen-started mixed physical nozzle jobs are not officially supported today.
+- The current touchscreen-start path requires all used toolheads in one G-code file to be configured with the same nozzle size.
+- Fluidd-started prints do not perform nozzle-size verification, so mixed physical nozzle-size validation may be possible through that path later.
+- No nozzle-size-specific calibration system exists; user configuration is authoritative.
+- Toolhead offsets and Z offset are not related to nozzle size.
+- Snapmaker has not observed significant wiping or tool-swap stability differences between nozzle sizes.
+- Filament loading and unloading parameters vary by nozzle size and are mostly firmware-handled.
+- Avoid a 0.2 mm nozzle with PETG-CF, PETG-GF, Wood, or TPU because of clog risk.
+
+This update splits Stage 2 into two paths:
+
+- Stage 2A: Fluidd-only experimental validation, developer-only, after U1 hardware access.
+- Stage 2B: Touchscreen-compatible mixed physical nozzle behavior, blocked pending logical-to-physical toolhead mapping support.
+
 ### R1: Nozzle Mismatch Safety
 
 - Risk: The slicer profile and printer memorized nozzle state disagree.
@@ -68,7 +87,13 @@ This register covers Stage 2: adaptive nozzle selection with U1 toolheads using 
 
 ## Current Recommendation
 
-Do not implement mixed physical nozzle behavior until:
+Touchscreen mixed physical nozzle support remains blocked. Do not implement touchscreen mixed physical nozzle output until Snapmaker's logical-to-physical toolhead mapping and nozzle-state behavior are documented and validated.
+
+Fluidd-only validation may be possible later, but only as a developer-only hardware experiment after U1 access is available.
+
+Avoid a 0.2 mm nozzle with PETG-CF, PETG-GF, Wood, and TPU.
+
+Do not implement any physical mixed-nozzle behavior until:
 
 - U1 access is available.
 - Nozzle state APIs/checks are understood.
