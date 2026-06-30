@@ -70,6 +70,52 @@ Observed local exit code:
 
 Because the single-object control also crashed, the failure should not be treated as evidence that object-level line-width overrides are invalid. It only means this local CLI assembly path is not reliable enough for Run 001 automation yet.
 
+## Upstream Orca CLI Probe
+
+Official upstream OrcaSlicer V2.4.1 was also tested locally because it includes Snapmaker U1 profiles and may have newer CLI behavior than Snapmaker Orca V2.3.4.
+
+Executable tested:
+
+```text
+C:\Users\d\tools\OrcaSlicer\V2.4.1_portable_full\orca-slicer.exe
+```
+
+Release:
+
+```text
+OrcaSlicer v2.4.1 Official Release
+Published: 2026-06-28
+```
+
+The upstream Orca CLI successfully sliced `thin_wall_comb.stl` with its bundled exact U1 stock profile:
+
+```text
+C:\Users\d\tools\OrcaSlicer\V2.4.1_portable_full\resources\profiles\Snapmaker\machine\Snapmaker U1 (0.4 nozzle).json
+C:\Users\d\tools\OrcaSlicer\V2.4.1_portable_full\resources\profiles\Snapmaker\process\0.20 Standard @Snapmaker U1 (0.4 nozzle).json
+C:\Users\d\tools\OrcaSlicer\V2.4.1_portable_full\resources\profiles\Snapmaker\filament\Snapmaker PLA @U1.json
+```
+
+It also successfully sliced a same-plate assemble-list probe with two copies of `thin_wall_comb.stl`:
+
+```text
+left/object 1: stock profile behavior
+right/object 2: experimental effective-width object print_params
+```
+
+Generated local file:
+
+```text
+outputs/amp_run_001/upstream_orca_cli_probe/same_plate/slice/plate_1.gcode
+```
+
+This file opens in Prusa G-code Viewer as a same-view comparison plate. Treat it as an upstream-Orca CLI comparison artifact, not as a Snapmaker Orca V2.3.4 result.
+
+The useful conclusion is:
+
+- `load_assemble_list` plus object-level `print_params` is a viable same-plate comparison mechanism in upstream Orca V2.4.1.
+- The same path is not locally stable in Snapmaker Orca V2.3.4.
+- For Snapmaker-branded validation, GUI same-plate slicing remains the preferred path unless the Snapmaker CLI crash is understood or Snapmaker publishes an updated CLI build with the upstream behavior.
+
 ## Why Not Use Synthetic Merged G-code First
 
 A synthetic comparison G-code can be made by translating stock and experimental toolpaths into one visual-only file, but that file would not be a real Snapmaker Orca slice. It may still be useful later as a viewer aid, but the preferred evidence path is a real slicer-generated same-plate preview from Snapmaker Orca whenever the GUI allows it.
