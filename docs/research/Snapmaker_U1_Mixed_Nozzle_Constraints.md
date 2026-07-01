@@ -11,6 +11,9 @@ This document is a public-safe technical summary. It is not a verbatim copy of p
 ## Key Findings
 
 - Touchscreen-started prints compare every used toolhead's configured nozzle size against the first `nozzle_diameter` value in the G-code.
+- Touchscreen-started prints only start if those values match.
+- Snapmaker Orca does not yet officially support mixed nozzle-size printing.
+- The logical-toolhead to physical-toolhead mapping has not been finalized.
 - Touchscreen-started mixed physical nozzle jobs are not officially supported today.
 - The current touchscreen-start path requires all used toolheads in one G-code file to be configured with the same nozzle size.
 - Fluidd-started prints do not perform nozzle-size verification, so mixed physical nozzle-size printing may be possible through that path.
@@ -39,7 +42,7 @@ Current AMP constraints:
 
 - Will future U1 G-code or job metadata support per-tool nozzle diameter declarations?
 - Will future firmware or slicer state store nozzle diameter per physical toolhead?
-- Which subsystem owns Fluidd load/unload nozzle-size behavior?
+- Whether Fluidd-started jobs still use configured nozzle size for firmware load/unload behavior.
 - What slicer-side contribution path would Snapmaker prefer for future logical-to-physical toolhead mapping?
 - What minimal validation models would Snapmaker consider useful before any future Stage 2 behavior affects toolpaths?
 

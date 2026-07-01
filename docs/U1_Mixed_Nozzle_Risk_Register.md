@@ -6,11 +6,14 @@ This register covers Stage 2: adaptive nozzle selection with U1 toolheads using 
 
 ## Risks
 
-### Snapmaker Technical Response Update - June 30, 2026
+### Snapmaker Technical Response Update — June 30, 2026
 
 Snapmaker support clarified the current U1 behavior:
 
 - Touchscreen-started prints compare every used toolhead's configured nozzle size against the first `nozzle_diameter` value in the G-code.
+- Touchscreen-started prints only start if those values match.
+- Snapmaker Orca does not yet officially support mixed nozzle-size printing.
+- The logical-toolhead to physical-toolhead mapping has not been finalized.
 - Touchscreen-started mixed physical nozzle jobs are not officially supported today.
 - The current touchscreen-start path requires all used toolheads in one G-code file to be configured with the same nozzle size.
 - Fluidd-started prints do not perform nozzle-size verification, so mixed physical nozzle-size validation may be possible through that path later.
