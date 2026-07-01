@@ -90,6 +90,10 @@ def collect(paths: Iterable[Path]) -> List[Dict[str, object]]:
     return [metric_row(path) for path in paths]
 
 
+def is_temp_gcode(path: Path) -> bool:
+    return any(parent.name.endswith("_tmp") for parent in path.parents)
+
+
 def write_csv(rows: List[Dict[str, object]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = [
@@ -141,7 +145,7 @@ def main() -> int:
     for item in args.paths:
         path = Path(item)
         if path.is_dir():
-            files.extend(sorted(path.rglob("*.gcode")))
+            files.extend(file for file in sorted(path.rglob("*.gcode")) if not is_temp_gcode(file))
         else:
             files.append(path)
 
