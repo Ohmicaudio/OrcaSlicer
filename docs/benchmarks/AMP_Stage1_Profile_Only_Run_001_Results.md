@@ -2,197 +2,192 @@
 
 ## Run Metadata
 
-- Date/time updated: 2026-06-29 16:55 -04:00
+- Date/time updated: 2026-07-01 05:21 -04:00
 - Git branch: `u1-adaptive-nozzle-strategy`
+- Current branch head during run: `71faf4261`
+- CLI fix included in branch: `afc59c6b8 fix: harden CLI assemble-list plate loading`
 - Benchmark type: profile-only slicing comparison
-- Target slicer: Snapmaker Orca V2.3.4 official Windows portable release
-- Executable used locally: `C:\Users\d\tools\Snapmaker_Orca\V2.3.4_portable\Snapmaker_Orca_Windows_V2.3.4_portable\snapmaker-orca.exe`
-- Windows file version: `2.3.4.0`
+- Target slicer: patched local Snapmaker Orca fork
+- Executable used locally: `B:\ohmic\Snapmaker-OrcaSlicer\build\src\Release\snapmaker-orca-console.exe`
+- Built DLL used locally: `B:\ohmic\Snapmaker-OrcaSlicer\build\src\Release\Snapmaker_Orca.dll`
 - CLI log version string: `Current Snapmaker_Orca Version 01.10.01.50`
-- Target baseline profile: `resources/profiles/Snapmaker/process/0.20 Standard @Snapmaker U1 (0.4 nozzle).json`
+- Requested stock profile: `resources/profiles/Snapmaker/process/0.20 Standard @Snapmaker U1 (0.4 nozzle).json`
+- CLI-safe stock profile used for slicing: `outputs/amp_run_001/tmp_profiles/stock_cli_safe_0.20_standard_u1_0.4.process.json`
 - Experimental profile: `docs/experimental_profiles/u1_0.4_adaptive_effective_width.process.json`
+- Metrics output: `outputs/amp_run_001/reports/metrics.csv`
+- Command ledger: `outputs/amp_run_001/reports/run_001_cli_commands.json`
 
-This benchmark compares profile-only slicing behavior. It does not prove print strength. It does not prove surface quality. It does not prove dimensional accuracy. It does not prove physical mixed-nozzle behavior.
+This benchmark compares profile-only slicing behavior. Same-plate comparison is for visual inspection. Separate stock-only and experimental-only G-code exports are used for metrics.
 
-Any print-time differences are unavailable in this pass because the current metrics parser did not find Snapmaker print-time comments in the exported G-code. File size, movement counts, and parsed positive E totals are G-code inspection metrics only.
+Preview/G-code does not prove print strength. Preview/G-code does not prove surface quality. This does not validate physical mixed-nozzle behavior. Estimated print time is slicer/G-code-derived unless confirmed on real hardware.
 
-## Current Status
+## Patched CLI State
 
-Run 001 now has a provisional Snapmaker Orca CLI slicing pass for seven STL models:
+The AMP branch includes the Snapmaker CLI assemble-list fix:
 
-- six generated benchmark models;
-- one downloaded public 3DBenchy STL.
+```text
+afc59c6b8 fix: harden CLI assemble-list plate loading
+```
 
-The exact requested stock profile could not be loaded by the official Snapmaker Orca V2.3.4 CLI. The CLI repeatedly crashed while loading:
+Focused controls with the patched CLI:
+
+| Control | Result | Output |
+| --- | --- | --- |
+| Single-object assemble-list control | exit `0` | `outputs/amp_run_001/cli_controls/single_control.gcode` |
+| Two-object same-plate assemble-list control | exit `0` | `outputs/amp_run_001/cli_controls/same_plate_control.gcode` |
+
+The exact requested stock process profile still crashes in the CLI before slicing:
 
 ```text
 resources/profiles/Snapmaker/process/0.20 Standard @Snapmaker U1 (0.4 nozzle).json
+exit code: -1073741819
 ```
 
-The crash occurred before slicing and returned:
-
-```text
--1073741819
-```
-
-A profile-isolation pass found that the official CLI slices successfully when the stock process is copied to an ignored temp file with only this key omitted:
+The local CLI-safe stock profile used for this run is a copy of the requested stock profile with only this key omitted:
 
 ```json
 "wipe_tower_filament": "0"
 ```
 
-No production profile was changed. The provisional stock G-code in `outputs/amp_run_001/gcode/` was generated with that ignored temp profile so that the rest of the benchmark pipeline could run. Treat these results as a provisional CLI-safe stock baseline, not a final exact-stock-profile result.
+No production profile was changed.
 
-The experimental effective-width profile loaded and sliced successfully as-is.
+## CLI Method
 
-## Commands Run
-
-Download and inspect official Snapmaker Orca release metadata:
+The run used the patched console wrapper and the patched `Snapmaker_Orca.dll` from the local fork build tree:
 
 ```powershell
-$release = Invoke-RestMethod -Uri 'https://api.github.com/repos/Snapmaker/OrcaSlicer/releases/latest' -Headers @{ 'User-Agent'='Codex-AMP-Benchmark' }
-$release | Select-Object tag_name,name,published_at,html_url
-$release.assets | Select-Object name,size,browser_download_url
+B:\ohmic\Snapmaker-OrcaSlicer\build\src\Release\snapmaker-orca-console.exe
+B:\ohmic\Snapmaker-OrcaSlicer\build\src\Release\Snapmaker_Orca.dll
 ```
 
-Download and extract the official Windows portable asset:
+Stock-only exports used:
 
 ```powershell
-Invoke-WebRequest -Uri $asset.browser_download_url -OutFile C:\Users\d\tools\Snapmaker_Orca\downloads\Snapmaker_Orca_Windows_V2.3.4_portable.zip
-Expand-Archive -LiteralPath C:\Users\d\tools\Snapmaker_Orca\downloads\Snapmaker_Orca_Windows_V2.3.4_portable.zip -DestinationPath C:\Users\d\tools\Snapmaker_Orca\V2.3.4_portable -Force
-```
-
-Confirm executable metadata:
-
-```powershell
-(Get-Item 'C:\Users\d\tools\Snapmaker_Orca\V2.3.4_portable\Snapmaker_Orca_Windows_V2.3.4_portable\snapmaker-orca.exe').VersionInfo
-```
-
-Probe exact stock profile:
-
-```powershell
-& 'C:\Users\d\tools\Snapmaker_Orca\V2.3.4_portable\Snapmaker_Orca_Windows_V2.3.4_portable\snapmaker-orca.exe' `
+& B:\ohmic\Snapmaker-OrcaSlicer\build\src\Release\snapmaker-orca-console.exe `
   --debug 3 `
   --slice 0 `
-  --outputdir outputs\amp_run_001\gcode\thin_wall_comb\stock_probe `
-  --load-settings "resources\profiles\Snapmaker\machine\Snapmaker U1 (0.4 nozzle).json;resources\profiles\Snapmaker\process\0.20 Standard @Snapmaker U1 (0.4 nozzle).json" `
+  --outputdir <temporary output directory> `
+  --load-settings "resources\profiles\Snapmaker\machine\Snapmaker U1 (0.4 nozzle).json;outputs\amp_run_001\tmp_profiles\stock_cli_safe_0.20_standard_u1_0.4.process.json" `
   --load-filaments "resources\profiles\Snapmaker\filament\Snapmaker PLA @U1.json" `
-  outputs\amp_run_001\models\generated\thin_wall_comb.stl
+  outputs\amp_run_001\models\generated\<model>.stl
 ```
 
-Result:
-
-```text
-CLI crash while loading stock process profile, before G-code export.
-Exit code: -1073741819
-```
-
-Run provisional profile-only slicing with official Snapmaker Orca CLI:
+Experimental-only exports used:
 
 ```powershell
-python <local Run 001 slicing harness>
+& B:\ohmic\Snapmaker-OrcaSlicer\build\src\Release\snapmaker-orca-console.exe `
+  --debug 3 `
+  --slice 0 `
+  --outputdir <temporary output directory> `
+  --load-settings "resources\profiles\Snapmaker\machine\Snapmaker U1 (0.4 nozzle).json;docs\experimental_profiles\u1_0.4_adaptive_effective_width.process.json" `
+  --load-filaments "resources\profiles\Snapmaker\filament\Snapmaker PLA @U1.json" `
+  outputs\amp_run_001\models\generated\<model>.stl
 ```
 
-The harness used:
+Same-plate visual comparison exports used `--load-assemble-list` with a generated assemble-list JSON containing two copies of the same STL. The first object used stock settings. The second object used object-level `print_params`:
+
+```json
+{
+  "wall_generator": "arachne",
+  "outer_wall_line_width": "0.42",
+  "top_surface_line_width": "0.42",
+  "support_line_width": "0.42",
+  "inner_wall_line_width": "0.52",
+  "internal_solid_infill_line_width": "0.52",
+  "sparse_infill_line_width": "0.58"
+}
+```
+
+The exact command ledger for this local run is stored in ignored output at:
 
 ```text
---slice 0
---load-settings "<U1 0.4 machine>;<process profile>"
---load-filaments "<Snapmaker PLA @U1>"
-```
-
-Canonical G-code outputs:
-
-```text
-outputs/amp_run_001/gcode/<model>/stock.gcode
-outputs/amp_run_001/gcode/<model>/experimental.gcode
-```
-
-Run metrics:
-
-```powershell
-python tools\amp_gcode_metrics.py outputs\amp_run_001\gcode
-```
-
-Result:
-
-```text
-wrote 14 row(s)
+outputs/amp_run_001/reports/run_001_cli_commands.json
 ```
 
 ## Model List
 
-| Model | Source | Category | Stock G-code | Experimental G-code | Status |
+| Model | Source | Category | Stock-only G-code | Experimental-only G-code | Same-plate visual comparison |
 | --- | --- | --- | --- | --- | --- |
-| `thin_wall_comb.stl` | generated | Thin-wall detail | generated with CLI-safe stock baseline | generated | provisional results available |
-| `large_bracket_box.stl` | generated | Large bracket / box | generated with CLI-safe stock baseline | generated | provisional results available |
-| `embossed_text_plate.stl` | generated | Embossed/debossed text surrogate | generated with CLI-safe stock baseline | generated | provisional results available |
-| `speaker_adapter_ring.stl` | generated | Speaker adapter ring | generated with CLI-safe stock baseline | generated | provisional results available |
-| `led_ring_face.stl` | generated | LED speaker ring face | generated with CLI-safe stock baseline | generated | provisional results available |
-| `sloped_surface_torture.stl` | generated | Sloped surface torture | generated with CLI-safe stock baseline | generated | provisional results available |
-| `3DBenchy.stl` | downloaded public model | General slicer torture model | generated with CLI-safe stock baseline | generated | provisional results available |
-| `Floating+Island.3mf` | user-provided local model | Multi-color / multi-region Bambu 3MF | not generated | not generated | future local candidate only |
+| `thin_wall_comb.stl` | generated | Thin-wall detail | generated | generated | generated |
+| `large_bracket_box.stl` | generated | Large bracket / box | generated | generated | generated |
+| `embossed_text_plate.stl` | generated | Embossed/debossed text surrogate | generated | generated | generated |
+| `speaker_adapter_ring.stl` | generated | Speaker adapter ring | generated | generated | blocked by same-plate CLI crash |
+| `led_ring_face.stl` | generated | LED speaker ring face | generated | generated | blocked by same-plate CLI crash |
+| `sloped_surface_torture.stl` | generated | Sloped surface torture | generated | generated | generated |
 
-`Floating+Island.3mf` was not used in this profile-only pass. It is a Bambu-origin multi-color 3MF with a large mesh payload and must not be treated as a U1-native project or as mixed physical nozzle validation.
+## Stock-Only vs Experimental-Only Metrics
 
-## Stock vs Experimental Metrics
-
-These are G-code inspection metrics from `outputs/amp_run_001/reports/metrics.csv`.
+These are G-code inspection metrics from separate stock-only and experimental-only exports. Same-plate comparison G-code is intentionally not mixed into this table.
 
 | Model | Stock size | Experimental size | Size delta | Stock travel moves | Experimental travel moves | Travel delta | Stock positive E | Experimental positive E | E delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `3DBenchy` | 4133668 | 3688820 | -10.8% | 104264 | 91478 | -12.3% | 3248.689 | 3141.970 | -3.3% |
-| `embossed_text_plate` | 411551 | 350821 | -14.8% | 9819 | 7841 | -20.1% | 691.328 | 759.192 | +9.8% |
-| `large_bracket_box` | 4063554 | 3137243 | -22.8% | 116510 | 86306 | -25.9% | 10706.668 | 10376.233 | -3.1% |
-| `led_ring_face` | 586366 | 551443 | -6.0% | 16022 | 15308 | -4.5% | 1274.228 | 981.306 | -23.0% |
-| `sloped_surface_torture` | 1713913 | 1250035 | -27.1% | 45583 | 30470 | -33.2% | 2528.247 | 2343.591 | -7.3% |
-| `speaker_adapter_ring` | 2218373 | 1829852 | -17.5% | 70207 | 57686 | -17.8% | 1984.638 | 1435.723 | -27.7% |
-| `thin_wall_comb` | 450346 | 413147 | -8.3% | 8810 | 7895 | -10.4% | 2494.658 | 2446.591 | -1.9% |
+| `thin_wall_comb` | 451015 | 414906 | -8.0% | 8810 | 7897 | -10.4% | 2494.658 | 2441.427 | -2.1% |
+| `large_bracket_box` | 4064626 | 3137845 | -22.8% | 116507 | 86304 | -25.9% | 10712.675 | 10379.266 | -3.1% |
+| `embossed_text_plate` | 419654 | 355137 | -15.4% | 9971 | 7933 | -20.4% | 756.248 | 775.374 | +2.5% |
+| `speaker_adapter_ring` | 2219230 | 1830885 | -17.5% | 70204 | 57698 | -17.8% | 1996.022 | 1439.444 | -27.9% |
+| `led_ring_face` | 587277 | 552028 | -6.0% | 16022 | 15308 | -4.5% | 1274.228 | 981.306 | -23.0% |
+| `sloped_surface_torture` | 1715337 | 1250720 | -27.1% | 45577 | 30473 | -33.1% | 2519.849 | 2343.980 | -7.0% |
+
+The metrics parser found no estimated print-time or filament-usage comments in the parsed Snapmaker G-code format. File size, movement counts, and parsed positive E totals are G-code inspection metrics only.
+
+## Same-Plate Visual Comparison Status
+
+Same-plate comparison is for visual inspection in a G-code viewer. It is not the source for stock-vs-experimental metrics.
+
+| Model | Same-plate result | Output |
+| --- | --- | --- |
+| `thin_wall_comb` | generated | `outputs/amp_run_001/gcode/thin_wall_comb/same_plate_stock_vs_experimental.gcode` |
+| `large_bracket_box` | generated | `outputs/amp_run_001/gcode/large_bracket_box/same_plate_stock_vs_experimental.gcode` |
+| `embossed_text_plate` | generated | `outputs/amp_run_001/gcode/embossed_text_plate/same_plate_stock_vs_experimental.gcode` |
+| `speaker_adapter_ring` | blocked by CLI access-violation exit `3221225477` / `0xC0000005` | not generated |
+| `led_ring_face` | blocked by CLI access-violation exit `3221225477` / `0xC0000005` | not generated |
+| `sloped_surface_torture` | generated | `outputs/amp_run_001/gcode/sloped_surface_torture/same_plate_stock_vs_experimental.gcode` |
+
+The two same-plate failures happen after assemble-list loading begins and after the model bounding box is logged. Their separate stock-only and experimental-only slices both succeed, so this is recorded as a same-plate CLI automation blocker, not as a model/profile slicing failure.
+
+## Upstream Orca CLI Probe
+
+The earlier upstream Orca V2.4.1 same-plate result remains an upstream Orca CLI automation probe, not official Snapmaker Orca target validation.
+
+That probe is useful evidence that the general Orca CLI assemble-list workflow can support same-plate comparison, but its metrics are not mixed into the official Snapmaker Run 001 table above.
 
 ## Observations
 
-- The official Snapmaker Orca V2.3.4 CLI can slice U1 0.4 models using U1 machine, process, and filament profiles.
-- The target stock profile currently exposes a CLI crash when loaded with `wipe_tower_filament`.
-- Removing only `wipe_tower_filament` in an ignored temp copy allowed a provisional stock baseline to be generated.
-- The experimental effective-width profile loaded without modification and generated G-code.
-- All generated STL benchmark models and 3DBenchy produced both provisional stock and experimental G-code.
-- The metrics parser found 14 canonical G-code files.
-- Snapmaker exported G-code did not include estimated print-time or filament-usage comments in the formats currently parsed by `tools/amp_gcode_metrics.py`.
-- The metrics parser did not count layers from the current Snapmaker G-code comments, so layer count remains unavailable in this pass.
+- The patched Snapmaker Orca CLI can slice all six generated Run 001 models as stock-only and experimental-only G-code.
+- The patched Snapmaker Orca CLI can run the single-object assemble-list control.
+- The patched Snapmaker Orca CLI can run the two-object same-plate assemble-list control.
+- Four of six generated models produced real Snapmaker same-plate visual comparison G-code.
+- Two larger/ring-like generated models still hit a same-plate CLI access violation.
+- Experimental effective-width settings change generated G-code metrics across all six models.
+- The largest file-size and travel-move reductions in this pass appear on `sloped_surface_torture` and `large_bracket_box`.
+- `embossed_text_plate` shows lower file size and travel moves but higher parsed positive E, which should be inspected visually before drawing conclusions.
 
 ## Failures / Blockers
 
-Primary exact-stock blocker:
-
-- Official Snapmaker Orca V2.3.4 CLI crashes while loading the requested exact stock process profile before slicing.
-- Isolated trigger: `wipe_tower_filament` in `0.20 Standard @Snapmaker U1 (0.4 nozzle).json`.
-- Workaround used for provisional G-code: ignored temp stock process profile with only `wipe_tower_filament` omitted.
-
-Open follow-up:
-
-- Verify whether the Snapmaker Orca GUI can load and export the exact stock profile without the CLI crash.
-- If GUI exact-stock export works, rerun Run 001 with exact `stock.gcode` files and replace the provisional metrics.
-- Update `tools/amp_gcode_metrics.py` later if Snapmaker G-code exposes layer, time, or filament metadata under different comment formats.
+- Exact stock process profile still crashes in CLI before slicing when loaded as-is.
+- Isolated stock-profile trigger remains `wipe_tower_filament`; this run used an ignored CLI-safe stock copy with only that key omitted.
+- Same-plate visual comparison still crashes for `speaker_adapter_ring` and `led_ring_face`.
+- The metrics parser still does not extract Snapmaker estimated print time or filament usage from the current G-code comments.
+- Layer count remains unavailable from the current parser for these Snapmaker G-code files.
 
 ## What Can Be Concluded
 
-- The Run 001 benchmark workspace, generated models, model manifest, and G-code metrics tooling are usable with official Snapmaker Orca output.
-- The experimental effective-width profile is importable by the official Snapmaker Orca V2.3.4 CLI.
-- A provisional stock-vs-experimental G-code comparison exists for seven STL models.
-- The provisional experimental outputs differ from the provisional stock baseline in file size, travel-move count, and parsed positive E totals.
+- The patched Snapmaker Orca CLI is now usable for Run 001 profile-only benchmark automation.
+- The profile-only stock-vs-experimental comparison can be generated for the six synthetic benchmark models.
+- Same-plate visual comparison is now usable for a subset of generated models.
+- The experimental effective-width/Arachne setup produces measurable G-code differences in file size, travel moves, and parsed positive E totals.
 
 ## What Cannot Be Concluded
 
 This run cannot claim:
 
-- final exact-stock-profile parity, because the exact stock profile hit a CLI crash;
 - print-time improvement;
 - filament reduction;
-- strength improvement;
+- print strength improvement;
 - surface quality improvement;
 - dimensional accuracy improvement;
 - bonding improvement;
-- mixed physical nozzle behavior;
+- physical mixed-nozzle behavior;
 - U1 toolhead, purge, wipe, calibration, or nozzle-state behavior.
 
-Those claims require exact-stock slicing where applicable and, for physical outcomes, measured hardware validation.
+Those claims require real hardware validation. Physical mixed-nozzle behavior remains a separate Stage 2 question.
