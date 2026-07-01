@@ -87,6 +87,9 @@ e491cbf docs: add AMP v0.2 architecture and read-only prototype plan
 - Stage 2B touchscreen-compatible path is blocked pending logical-to-physical toolhead mapping support.
 - Clean Snapmaker CLI assemble-list fix branch was prepared and submitted as PR https://github.com/Snapmaker/OrcaSlicer/pull/560.
 - The CLI fix enables future benchmark automation but is not required for AMP behavior.
+- Clean Snapmaker CLI `normalize_fdm()` fix branch was prepared and submitted as PR https://github.com/Snapmaker/OrcaSlicer/pull/561.
+- The `normalize_fdm()` fix allows the exact stock U1 process profile to load in CLI without requiring a temporary CLI-safe copy.
+- The `normalize_fdm()` PR is independent from AMP and does not include AMP planner code or profile changes.
 - No production slicer path consumes AMP.
 
 ## What Does Not Exist Yet
