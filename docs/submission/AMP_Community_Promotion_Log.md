@@ -27,6 +27,19 @@ The current public ask is Stage 1 benchmark Run 001 test models.
   - Submitted Snapmaker support ticket.
   - Recorded support-ticket submission in `docs/submission/Snapmaker_Support_Ticket_Record.md`.
 
+#### Run 001 Public Update
+
+- Status: posted / public
+- Posted: 2026-07-01 11:53:00 -04:00
+- URL: <https://forum.snapmaker.com/t/adaptive-manufacturing-planner-for-u1-bead-widths-first-mixed-nozzles-later/42359/11>
+- Summary:
+  - Benchmark Run 001 now has real Snapmaker Orca CLI-generated results using a local CLI-hardened Snapmaker Orca build.
+  - All six generated models produced stock-only G-code.
+  - All six generated models produced experimental-only G-code.
+  - All six same-plate stock-vs-experimental visual comparisons generated on the local CLI-hardened branch.
+  - The benchmark remains profile-only and does not prove print strength, surface quality, or physical mixed-nozzle behavior.
+  - CLI hardening PRs are separate from AMP planner behavior.
+
 ### Reddit r/snapmaker
 
 - Status: posted / public
@@ -43,6 +56,19 @@ The current public ask is Stage 1 benchmark Run 001 test models.
   - Monitor for model suggestions and failure cases.
   - Record model candidates in the Stage 1 benchmark notes.
   - Do not claim print-time, strength, print-quality, or mixed-nozzle results from preview-only feedback.
+
+#### Run 001 Public Update
+
+- Status: posted / public
+- Posted: 2026-07-01 11:53:00 -04:00
+- URL: <https://www.reddit.com/r/snapmaker/comments/1uiu84u/comment/ouxk7co/>
+- Summary:
+  - Benchmark Run 001 now has real Snapmaker Orca CLI-generated results using a local CLI-hardened Snapmaker Orca build.
+  - All six generated models produced stock-only G-code.
+  - All six generated models produced experimental-only G-code.
+  - All six same-plate stock-vs-experimental visual comparisons generated on the local CLI-hardened branch.
+  - The benchmark remains profile-only and does not prove print strength, surface quality, or physical mixed-nozzle behavior.
+  - CLI hardening PRs are separate from AMP planner behavior.
 
 ## Pending Channels
 
@@ -74,3 +100,10 @@ The current public ask is Stage 1 benchmark Run 001 test models.
 - Current branch remains behavior-neutral.
 - No production slicer path consumes AMP.
 - Stage 2 mixed physical nozzle behavior remains blocked until U1 hardware validation is possible.
+
+## Related Snapmaker Orca CLI PRs
+
+- PR #560: <https://github.com/Snapmaker/OrcaSlicer/pull/560>
+- PR #561: <https://github.com/Snapmaker/OrcaSlicer/pull/561>
+- PR #562: <https://github.com/Snapmaker/OrcaSlicer/pull/562>
+- These PRs make CLI slicing and benchmark automation more reliable; they do not add AMP planner behavior.
