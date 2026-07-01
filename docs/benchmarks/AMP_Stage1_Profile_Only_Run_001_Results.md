@@ -150,6 +150,29 @@ Same-plate comparison is for visual inspection in a G-code viewer. It is not the
 
 All six same-plate exports generated successfully in this local run. Same-plate G-code remains a visual inspection artifact, not the source for stock-vs-experimental metrics.
 
+## Initial Same-Plate Visual Review
+
+An initial local preview-image review was performed from the same-plate G-code files. The review generated role-colored path preview sheets for sampled layers and stored them locally under:
+
+```text
+outputs/amp_run_001/visual_review/
+```
+
+Those preview sheets are local review artifacts and are not committed.
+
+Visual review is preview-only. Preview does not prove surface quality. Preview does not prove strength. Preview does not validate mixed physical nozzle behavior.
+
+| Model | Layers inspected | Initial review status | Notes |
+| --- | --- | --- | --- |
+| `thin_wall_comb` | 1 / 31 / 60 | acceptable for viewer confirmation | Thin comb features remain visible in sampled layers. |
+| `large_bracket_box` | 1 / 101 / 200 | acceptable for viewer confirmation | Exterior loops remain visible; internal/sparse paths differ as expected. |
+| `embossed_text_plate` | 1 / 11 / 21 | caution | Text surrogate paths remain present, but the parsed positive E increase still needs viewer confirmation. |
+| `speaker_adapter_ring` | 1 / 26 / 50 | acceptable for viewer confirmation | Inner and outer ring loops remain visible in sampled layers. |
+| `led_ring_face` | 1 / 10 / 18 | caution for cosmetic review | Ring body and small top/detail marks remain visible in sampled layers. |
+| `sloped_surface_torture` | 1 / 36 / 70 | caution for slope review | Stepped/sloped features remain visible, but topmost sampled layer was not useful for cosmetic slope judgment. |
+
+No obvious missing exterior loop or vanished feature was visible in the sampled preview sheets. Snapmaker Orca or Prusa G-code Viewer confirmation is still recommended before changing Run 002 settings.
+
 ## Upstream Orca CLI Probe
 
 The earlier upstream Orca V2.4.1 same-plate result remains an upstream Orca CLI automation probe, not official Snapmaker Orca target validation.

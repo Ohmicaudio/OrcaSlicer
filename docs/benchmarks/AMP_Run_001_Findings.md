@@ -85,6 +85,31 @@ Priority 2:
 - `speaker_adapter_ring`: inspect ring walls and mounting features because parsed positive E reduction is large.
 - `large_bracket_box`: inspect large internal/bulk regions and external walls to confirm reductions are internal rather than cosmetic degradation.
 
+## Initial Visual Review Notes
+
+Status: initial local preview-image review completed.
+
+This review used locally generated role-colored path preview sheets from same-plate G-code. It did not use hardware prints. The preview sheets are stored locally under `outputs/amp_run_001/visual_review/` and are not committed.
+
+Visual review is preview-only. Preview does not prove surface quality. Preview does not prove strength. Preview does not validate mixed physical nozzle behavior.
+
+| Model | Layers inspected | Initial visual status | Notes |
+| --- | --- | --- | --- |
+| `thin_wall_comb` | 1 / 31 / 60 | acceptable for viewer confirmation | Thin comb features remain visible in sampled mid/top layers; no obvious missing thin-wall feature in the generated preview sheet. |
+| `large_bracket_box` | 1 / 101 / 200 | acceptable for viewer confirmation | Exterior rectangular loops remain visible; internal/sparse paths differ as expected. |
+| `embossed_text_plate` | 1 / 11 / 21 | caution | Text surrogate paths remain present, but copy labeling is less reliable and parsed positive E increased. Needs Snapmaker/Prusa viewer confirmation. |
+| `speaker_adapter_ring` | 1 / 26 / 50 | acceptable for viewer confirmation | Inner and outer ring loops remain visible; no obvious missing ring perimeter in sampled preview sheet. |
+| `led_ring_face` | 1 / 10 / 18 | caution for cosmetic review | Ring bodies and small top/detail marks remain visible; cosmetic result still needs viewer and hardware caution. |
+| `sloped_surface_torture` | 1 / 36 / 70 | caution for slope review | Stepped/sloped features remain visible in sampled layers, but topmost sampled layer was not useful for judging cosmetic slope quality. |
+
+Summary:
+
+- No obvious missing exterior loop or vanished feature was visible in the sampled preview sheets.
+- The experimental effective-width profile produces visible path/layout differences.
+- `embossed_text_plate`, `led_ring_face`, and `sloped_surface_torture` remain the highest-priority viewer-confirmation cases.
+- Snapmaker Orca or Prusa G-code Viewer confirmation is still recommended before changing Run 002 settings.
+- Physical/proxy coupon tests remain required before making process claims.
+
 ## What The Experimental Profile Appears To Affect
 
 The experimental profile appears to affect:
@@ -127,8 +152,8 @@ For follow-up profile sweeps, consider:
 
 ## Next Evidence Steps
 
-1. Complete the Run 001 visual review checklist in Snapmaker Orca preview.
+1. Confirm the sampled local preview-image review in Snapmaker Orca preview.
 2. Use Prusa G-code Viewer as a secondary visual check where useful.
-3. Record screenshots locally, but do not commit screenshots unless explicitly approved.
+3. Record additional screenshots locally, but do not commit screenshots unless explicitly approved.
 4. Start proxy bead-width characterization on available FDM hardware.
 5. Use Run 001 plus proxy print evidence to decide Run 002 model categories.
