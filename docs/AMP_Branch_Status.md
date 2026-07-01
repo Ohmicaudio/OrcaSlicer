@@ -85,6 +85,8 @@ e491cbf docs: add AMP v0.2 architecture and read-only prototype plan
 - Snapmaker U1 mixed-nozzle technical constraints are documented.
 - Stage 2A Fluidd-only validation path is identified.
 - Stage 2B touchscreen-compatible path is blocked pending logical-to-physical toolhead mapping support.
+- Clean Snapmaker CLI assemble-list fix branch was prepared and submitted as PR https://github.com/Snapmaker/OrcaSlicer/pull/560.
+- The CLI fix enables future benchmark automation but is not required for AMP behavior.
 - No production slicer path consumes AMP.
 
 ## What Does Not Exist Yet
