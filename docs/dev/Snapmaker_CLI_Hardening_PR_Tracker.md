@@ -12,7 +12,7 @@ These fixes are independent from Adaptive Manufacturing Planner behavior. They m
 | --- | --- | --- | --- |
 | PR #560 | Open | https://github.com/Snapmaker/OrcaSlicer/pull/560 | Hardens CLI assemble-list plate loading. |
 | PR #561 | Open | https://github.com/Snapmaker/OrcaSlicer/pull/561 | Guards `normalize_fdm()` when a process-only profile has `wipe_tower_filament` before `nozzle_diameter` is available. |
-| Extruder expansion fix | Ready to open | https://github.com/Snapmaker/OrcaSlicer/compare/main...Ohmicaudio:OrcaSlicer:fix/cli-extruder-expansion-without-gui-state?expand=1 | Avoids GUI-only filament state in CLI extruder expansion. |
+| PR #562 | Open | https://github.com/Snapmaker/OrcaSlicer/pull/562 | Avoids GUI-only filament state in CLI extruder expansion. |
 
 ## Run 001 Relationship
 
@@ -39,3 +39,4 @@ AMP remains behavior-neutral: no production slicer path consumes AMP, no G-code 
 To reproduce Run 001 exact-stock CLI slicing without local workarounds, the local build currently needs all three CLI hardening fixes listed above.
 
 Once equivalent fixes are merged upstream, Run 001 should be reproducible from a cleaner Snapmaker Orca branch without the local CLI-hardened benchmark branch.
+
