@@ -23,6 +23,12 @@ This benchmark compares profile-only slicing behavior. Same-plate comparison is 
 
 Preview/G-code does not prove print strength. Preview/G-code does not prove surface quality. This does not validate physical mixed-nozzle behavior. Estimated print time is slicer/G-code-derived unless confirmed on real hardware.
 
+## CLI Hardening Context
+
+Run 001 used a local CLI-hardened Snapmaker Orca build. The exact stock U1 process profile no longer required a CLI-safe copy in that local branch.
+
+The CLI hardening fixes are being contributed separately to Snapmaker Orca and tracked in `docs/dev/Snapmaker_CLI_Hardening_PR_Tracker.md`. These CLI fixes do not change AMP planner behavior.
+
 ## Patched CLI State
 
 The local benchmark branch includes three Snapmaker CLI hardening fixes:
