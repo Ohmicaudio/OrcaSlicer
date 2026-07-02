@@ -36,11 +36,16 @@ The fixture is a ring/badge-like product surrogate with:
 - raised boss/counterbore-like regions around mounting holes;
 - raised geometric text/logo surrogate;
 - small bar/slot detail surrogate;
-- pinstripe groove rings;
-- chamfer-like cosmetic face slope;
+- raised pinstripe rings;
 - thicker hidden backside/internal bulk.
 
 True text mesh and real Ohmic logo geometry are deferred to future real-part input models. The current fixture uses geometric text/detail surrogates to avoid font and boolean dependencies.
+
+Revision note:
+
+- Rev A used a square-grid heightfield and produced an unacceptable low-poly visual result.
+- Rev B replaces that with circular annular geometry, real holes, raised bosses, raised pinstripes, block-letter detail surrogates, and a backside bulk rib.
+- The metrics below are from Rev B.
 
 ## Why This Model Is Decision-Relevant
 
@@ -107,12 +112,12 @@ top infill extrusion width = 0.42mm
 
 | Metric | Stock | Width-only | Delta |
 | --- | ---: | ---: | ---: |
-| M73 estimate | 125 min | 122 min | -2.4% |
-| G-code file size | 3,392,275 bytes | 3,129,961 bytes | -7.7% |
-| Layer count | 34 | 34 | +0.0% |
-| Extrusion moves | 1,700 | 1,738 | +2.2% |
-| Travel moves | 96,462 | 86,885 | -9.9% |
-| Positive E total | 4,209.809 | 4,130.329 | -1.9% |
+| M73 estimate | 109 min | 107 min | -1.8% |
+| G-code file size | 1,638,732 bytes | 1,536,873 bytes | -6.2% |
+| Layer count | 33 | 33 | +0.0% |
+| Extrusion moves | 1,055 | 1,226 | +16.2% |
+| Travel moves | 49,768 | 45,624 | -8.3% |
+| Positive E total | 1,237.189 | 1,293.074 | +4.5% |
 
 Warnings:
 
@@ -144,19 +149,20 @@ The intended benefit is lower or simpler internal/bulk path burden while preserv
 
 ## Decision From This Fixture
 
-The width-only result is a promising candidate pending visual and physical validation.
+The width-only result is a promising but caution-marked candidate pending visual and physical validation.
 
 Reason:
 
-- M73 estimate decreased by 2.4%.
-- G-code file size decreased by 7.7%.
-- Travel moves decreased by 9.9%.
-- Positive E decreased by 1.9%.
+- M73 estimate decreased by 1.8%.
+- G-code file size decreased by 6.2%.
+- Travel moves decreased by 8.3%.
 - Layer count stayed unchanged, confirming this was not a hidden layer-height/combined test.
 
 Caution:
 
-- Extrusion moves increased by 2.2%.
+- Extrusion moves increased by 16.2%.
+- Positive E increased by 4.5%.
+- Those increases may indicate extra local segmentation, changed perimeter/infill allocation, or detail/boss handling that needs viewer inspection.
 - Preview must confirm that raised detail, grooves, holes, bosses, and cosmetic face features remain intact.
 - Physical printing is still required before any print-performance conclusion.
 
@@ -219,4 +225,3 @@ This does not validate physical mixed-nozzle behavior.
 This does not change AMP slicer behavior.
 
 This is Stage 1 profile-only evidence until physical prints are performed and recorded.
-
