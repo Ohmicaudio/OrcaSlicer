@@ -122,6 +122,17 @@ top infill extrusion width = 0.42mm
 Warnings:
 
 - Filament usage comments were not present in the parsed Snapmaker G-code.
+- The Snapmaker G-code uses `M83` relative extrusion. A separate visual-review parser treated positive `E` moves as extrusion for layer rendering. The current metrics table remains useful as a lightweight comparison, but material-use conclusions require slicer-reported filament, corrected parsing, or physical weighing.
+
+Relative-extrusion sanity counters used for the visual review:
+
+| Metric | Stock | Width-only | Direction |
+| --- | ---: | ---: | --- |
+| Extrusion moves | 1,247 | 1,458 | Width-only higher |
+| Travel moves | 50,024 | 45,895 | Width-only lower |
+| Positive relative E total | 1,941.234 | 2,306.316 | Width-only higher |
+
+These counters reinforce the same caution signal: width-only reduced travel but increased local extrusion work on this geometry.
 
 ## Visual/Detail Regions To Preserve
 
@@ -147,6 +158,67 @@ Width-only is expected to affect:
 
 The intended benefit is lower or simpler internal/bulk path burden while preserving visible/detail surfaces.
 
+## Rev B Visual Preview Review
+
+This is a preview-only review of the Rev B fixture. Preview does not prove surface quality. Preview does not prove strength. This does not validate physical mixed-nozzle behavior.
+
+Reviewed files:
+
+```text
+outputs/amp_detail_fixture/gcode/stock.gcode
+outputs/amp_detail_fixture/gcode/width_only.gcode
+```
+
+Local review images were generated from the G-code for inspection:
+
+```text
+outputs/amp_detail_fixture/visual_review/rev_b_stock_vs_width_layers_m83.png
+outputs/amp_detail_fixture/visual_review/rev_b_stock_width_overlay_layers_m83.png
+outputs/amp_detail_fixture/visual_review/rev_b_upper_logo_bosses_zoom_m83.png
+outputs/amp_detail_fixture/visual_review/rev_b_lower_stripe_bulk_zoom_m83.png
+```
+
+These generated preview images are not committed.
+
+Same-plate G-code was not available for this Rev B pass, so the review compares the separate Stock and Width-only G-code exports.
+
+### Areas Inspected
+
+| Area | Preview observation |
+| --- | --- |
+| Outer cosmetic face | Major outer annular paths remain present in both variants. No obvious missing exterior loop was visible in the reviewed layers. |
+| Raised text/logo surrogate | Raised surrogate regions remain present in both variants. Width-only changes local fill direction/spacing behavior but does not visibly remove the surrogate features in the reviewed G-code layers. |
+| Grooves/pinstripes | Stripe-like paths remain visible in the reviewed layers. Width-only does not obviously erase them, but the preview should still be checked in Snapmaker Orca before printing. |
+| Mounting holes | Hole openings remain visible in both variants. No obvious closure of the inspected holes was seen in the generated layer previews. |
+| Counterbores/bosses | Boss/counterbore-like islands remain present in both variants. Width-only adds local path density around some raised/detail layers. |
+| Hidden backside/internal bulk | Width-only changes the internal/bulk path layout as expected, especially around the lower backside rib region. |
+| Top surfaces | Top/detail layers remain present, but the width-only candidate changes local top-fill distribution enough that physical print review is required. |
+| Missing loops | No obvious missing protected/detail loop was visible in the generated review sheets. |
+| Overfill-looking risk | The visual review does not prove overfill, but the higher positive relative E total and increased extrusion moves make this a caution item. |
+
+### Stock Vs Width-Only Notes
+
+Width-only preserved the broad visible/detail geometry in preview, including the ring outline, central opening, raised detail surrogate, boss regions, and lower stripe/detail areas. That is the positive signal.
+
+The caution signal is also clear: width-only did not simply reduce path burden. It reduced travel and file size, but it increased extrusion moves and positive relative E in this fixture. In the detail-bearing layers around the raised features and bosses, width-only often created denser or more segmented local path behavior.
+
+This means the fixture does not support a blanket rule such as widening all internal lines. It supports a narrower rule candidate: preserve visible/detail regions, and consider internal widening only where the region is thick enough and the predicted path burden actually improves.
+
+### Visual Review Recommendation
+
+Recommendation: continue, but caution-marked.
+
+Do not reject the width-only candidate yet because the preview did not show obvious loss of protected exterior/detail features. Do not promote it to an automatic AMP rule yet because this geometry shows increased extrusion complexity and higher positive relative E.
+
+Next step for this fixture:
+
+```text
+Stock physical print
+Width-only physical print
+```
+
+Only those two variants should be printed first. Layer-height-only and combined mode should remain blocked for this fixture until the width-only physical comparison is understood.
+
 ## Decision From This Fixture
 
 The width-only result is a promising but caution-marked candidate pending visual and physical validation.
@@ -168,7 +240,7 @@ Caution:
 
 ## Next Required Visual Review
 
-Open both files in Snapmaker Orca preview:
+Manual Snapmaker Orca preview remains recommended as a second visual pass:
 
 ```text
 outputs/amp_detail_fixture/gcode/stock.gcode
