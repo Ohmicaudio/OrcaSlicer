@@ -13,6 +13,8 @@ from typing import Dict, Iterable, List, Optional
 TIME_RE = re.compile(r"(?:estimated printing time|estimated print time|print time|total time)\s*[:=]\s*(.+)", re.I)
 FILAMENT_RE = re.compile(r"(?:filament used|total filament|filament length)\s*[:=]\s*(.+)", re.I)
 TYPE_RE = re.compile(r"^\s*;\s*(?:TYPE|FEATURE|role)\s*[:=]\s*(.+)\s*$", re.I)
+TOTAL_LAYER_RE = re.compile(r"^\s*;\s*total layer number\s*:\s*(\d+)\s*$", re.I)
+M73_TIME_RE = re.compile(r"^\s*M73\b.*(?:^|\s)R(\d+)\b")
 
 
 def parse_e_value(line: str) -> Optional[float]:
@@ -47,6 +49,9 @@ def metric_row(path: Path) -> Dict[str, object]:
     with path.open("r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             stripped = line.strip()
+            total_layer_match = TOTAL_LAYER_RE.match(stripped)
+            if total_layer_match:
+                row["layer_count"] = int(total_layer_match.group(1))
             if stripped.startswith(";LAYER:") or stripped.startswith("; layer "):
                 row["layer_count"] = int(row["layer_count"]) + 1
             if re.match(r"^T\d+\b", stripped):
@@ -59,6 +64,9 @@ def metric_row(path: Path) -> Dict[str, object]:
             time_match = TIME_RE.search(stripped)
             if time_match and not row["estimated_print_time_comment"]:
                 row["estimated_print_time_comment"] = time_match.group(1).strip()
+            m73_match = M73_TIME_RE.match(stripped)
+            if m73_match and not row["estimated_print_time_comment"]:
+                row["estimated_print_time_comment"] = f"{m73_match.group(1)} min (M73 R)"
             filament_match = FILAMENT_RE.search(stripped)
             if filament_match and not row["estimated_filament_comment"]:
                 row["estimated_filament_comment"] = filament_match.group(1).strip()
@@ -120,7 +128,7 @@ def write_csv(rows: List[Dict[str, object]], path: Path) -> None:
 def write_summary(rows: List[Dict[str, object]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as fh:
-        fh.write("# AMP Run 001 G-code Metrics Summary\n\n")
+        fh.write("# AMP G-code Metrics Summary\n\n")
         if not rows:
             fh.write("No G-code files were found.\n")
             return
