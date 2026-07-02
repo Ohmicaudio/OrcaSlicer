@@ -42,6 +42,7 @@ def metric_row(path: Path) -> Dict[str, object]:
         return row
 
     last_e: Optional[float] = None
+    relative_extrusion = False
     tools = set()
     type_counts: Dict[str, int] = {}
     warnings: List[str] = []
@@ -49,6 +50,14 @@ def metric_row(path: Path) -> Dict[str, object]:
     with path.open("r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             stripped = line.strip()
+            if re.match(r"^M83\b", stripped):
+                relative_extrusion = True
+            elif re.match(r"^M82\b", stripped):
+                relative_extrusion = False
+            elif re.match(r"^G92\b", stripped):
+                e_value = parse_e_value(stripped)
+                if e_value is not None:
+                    last_e = e_value
             total_layer_match = TOTAL_LAYER_RE.match(stripped)
             if total_layer_match:
                 row["layer_count"] = int(total_layer_match.group(1))
@@ -74,10 +83,12 @@ def metric_row(path: Path) -> Dict[str, object]:
                 e_value = parse_e_value(stripped)
                 has_xy = bool(re.search(r"(?:^|\s)[XY]-?\d", stripped))
                 if e_value is not None:
-                    if last_e is not None and e_value > last_e:
-                        row["total_positive_e"] = float(row["total_positive_e"]) + (e_value - last_e)
+                    positive_e = e_value if relative_extrusion else (e_value - last_e if last_e is not None else 0.0)
+                    if positive_e > 0:
+                        row["total_positive_e"] = float(row["total_positive_e"]) + positive_e
                         row["extrusion_moves"] = int(row["extrusion_moves"]) + 1
-                    last_e = e_value
+                    if not relative_extrusion:
+                        last_e = e_value
                 elif has_xy:
                     row["travel_moves"] = int(row["travel_moves"]) + 1
 
