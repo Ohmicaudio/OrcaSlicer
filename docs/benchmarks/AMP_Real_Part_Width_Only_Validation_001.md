@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This validation pass tests the first conservative Stage 1 heuristic candidate on one real or realistic functional part:
+This validation pass tests the first conservative Stage 1 heuristic candidate on one real or realistic detail-bearing functional part:
 
 ```text
 Stock
@@ -13,10 +13,21 @@ Width-only internal widening
 The goal is to ask one practical question:
 
 ```text
-Does width-only internal widening preserve visible/detail surfaces while reducing or simplifying internal path burden on a real-ish part?
+Does width-only internal widening preserve visible/detail surfaces while reducing or simplifying internal path burden on a real-ish, product-style part?
 ```
 
 This is the next evidence step after Run 002. It is intentionally narrower than another synthetic benchmark matrix.
+
+Basic or plain generated geometry is no longer a decision-making target for AMP. Basic synthetic models are useful for smoke testing CLI slicing, export, metrics scripts, and crash fixes. They are not sufficient for deciding whether AMP preserves resolution where it matters.
+
+The validation target must include both:
+
+```text
+visible/cosmetic detail to protect
+internal/bulk geometry where wider paths might help
+```
+
+If a model has only bulk, it cannot test detail preservation. If it has only detail and no bulk, it cannot test resolution reallocation.
 
 ## Scope
 
@@ -55,28 +66,59 @@ layer height: stock
 
 This is based on the Run 002 decision that width-only is the cleanest first Stage 1 candidate for internal/bulk regions, while layer-height and combined modes need more visual and physical evidence.
 
+## Model Target Requirements
+
+Use detail-bearing geometry with actual AMP decision value.
+
+The selected model must include most of:
+
+- outer cosmetic face;
+- raised or recessed text/logo surrogate;
+- small grooves or pinstripes;
+- mounting holes;
+- counterbores or bosses;
+- curved or chamfered surface;
+- thin decorative detail;
+- thicker hidden backside or internal bulk.
+
+Preferred target:
+
+```text
+actual Ohmic speaker ring / LED ring / badge / trim part with visible detail
+```
+
+Fallback target:
+
+```text
+AMP detail-ring validation fixture
+```
+
+The fallback fixture must not be a plain ring. It should be intentionally designed to contain detail to preserve and bulk to optimize.
+
 ## Model Candidates
 
 Use one of these real or realistic functional parts:
 
 | Candidate | Why it is useful |
 | --- | --- |
-| Speaker adapter ring | Functional ring, wall continuity, holes, fit surfaces, internal/bulk path opportunities. |
+| Actual Ohmic speaker ring with logo/text/detail | Best mix of cosmetic face, holes, ring walls, backside bulk, and visible detail. |
 | LED speaker ring face | Cosmetic front surface, openings, small features, visible/detail guardrail. |
-| Amp bracket | Functional load-bearing-ish shape with holes, exterior walls, and bulk regions. |
+| Amp bracket with holes, bosses, and top markings | Functional shape with fit features, exterior walls, top detail, and bulk regions. |
 | Trim/logo badge | Detail/cosmetic guardrail with text, logo, face quality, and edge quality. |
+| AMP detail-ring validation fixture | Fallback only; must include text/logo surrogate, grooves, holes, bosses/counterbores, chamfers, and backside bulk. |
 
 Preferred first pick:
 
 ```text
-speaker adapter ring
+detail-rich speaker ring or LED ring face
 ```
 
 Reason:
 
 - Run 002 showed width-only as the best conservative candidate for `speaker_adapter_ring`.
-- It is functional enough to make fit and hole quality meaningful.
-- It has visible walls and internal/bulk regions, so it can test whether AMP's preserve-vs-widen split makes practical sense.
+- A detail-rich ring is functional enough to make fit and hole quality meaningful.
+- A cosmetic/detail face plus backside or internal bulk can test whether AMP's preserve-vs-widen split makes practical sense.
+- A plain/basic ring is not enough because it does not test visible detail preservation.
 
 ## Chosen Part Record
 
@@ -87,6 +129,9 @@ Fill this section when the part is selected.
 | Model name | TBD |
 | Source path | TBD |
 | Why this part is useful | TBD |
+| Visible/detail features present | TBD |
+| Internal/bulk regions present | TBD |
+| Reason this is not just a smoke-test model | TBD |
 | Material, if printed | TBD |
 | Printer, if printed | TBD |
 | Nozzle, if printed | TBD |
@@ -100,7 +145,10 @@ Record:
 - front/cosmetic face;
 - top surfaces;
 - text, logo, marks, or trim features;
+- grooves, pinstripes, or other small cosmetic details;
 - holes and mounting features;
+- counterbores, bosses, or fit-critical reliefs;
+- curved or chamfered cosmetic surfaces;
 - fit-critical faces.
 
 These areas should remain comparable to stock in preview before any physical print is trusted.
@@ -205,6 +253,7 @@ Physical notes should be written as observations, not broad claims.
 
 This pass is favorable if:
 
+- the selected target contains both visible/detail features and internal/bulk regions;
 - exterior/visible detail remains comparable in preview;
 - no visible loops are missing;
 - no obvious top-surface degradation appears in preview;
@@ -217,6 +266,7 @@ This pass is favorable if:
 
 Mark the candidate as fail or caution if:
 
+- the selected model is too plain to answer the AMP preserve-vs-widen question;
 - visible loops disappear;
 - top/cosmetic surfaces become visibly worse in preview;
 - holes or fit features appear compromised;
@@ -249,4 +299,3 @@ then cosmetic face/badge
 ```
 
 Do not move to geometry scoring, Flow integration, Arachne integration, LayerRegion consumption, G-code behavior changes, or mixed-nozzle output from this pass alone.
-
