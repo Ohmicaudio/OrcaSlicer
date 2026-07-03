@@ -255,33 +255,72 @@ B:\ohmic\Snapmaker-OrcaSlicer-cli-0p2-fix
 fix/cli-u1-0p2-profile-line-width-resolution
 ```
 
-An experimental minimal source patch was prepared locally in:
+The clean branch was committed and pushed as:
+
+```text
+f6916ba3b fix: resolve inherited process profiles in CLI
+https://github.com/Ohmicaudio/OrcaSlicer/tree/fix/cli-u1-0p2-profile-line-width-resolution
+```
+
+Changed source file:
 
 ```text
 src/Snapmaker_Orca.cpp
 ```
 
-Patch intent:
+Fix intent:
 
 ```text
 Resolve same-directory inherited process JSON files before applying an instantiated process wrapper in the CLI path.
-```
-
-The patch has not been committed or pushed.
-
-Reason:
-
-```text
-The clean worktree build did not complete within the local tool window.
 ```
 
 Build notes:
 
 - A portable CMake 3.31.8 was installed under `B:\ohmic\tools` because the PATH CMake is 4.0.1 and the repo rejects CMake 4.x on Windows.
 - Configure succeeded with `SLIC3R_MSVC_COMPILE_PARALLEL=OFF`.
-- The focused `Snapmaker_Orca` target build progressed into `libslic3r_gui` but remained in a long single `cl.exe` compile when stopped to avoid another machine lockup.
+- The first measured serial build failed in `libslic3r_gui` with `error C1090: PDB API call failed, error code '3'`.
+- Removing the generated `libslic3r_gui.pdb` build artifact and resuming the same serial build allowed the target to finish.
+- A follow-up `Snapmaker_Orca` target rebuild exited 0.
 
-No Snapmaker PR should be opened from that branch until the patched build completes and the U1 0.2 cube command exits 0.
+The local build target produces `Snapmaker_Orca.dll`. For CLI verification, the existing console wrapper executable was copied into the clean build `Release` directory as a local test artifact so it would load the newly built DLL from the same directory.
+
+## Patched CLI Verification
+
+Exact plain-cube repro after the fix:
+
+```text
+B:\ohmic\builds\Snapmaker-OrcaSlicer-cli-0p2-fix\msvc-release\src\Release\snapmaker-orca-console.exe
+  --debug 3
+  --slice 0
+  --outputdir B:\ohmic\Snapmaker-OrcaSlicer-cli-0p2-fix\outputs\cli_0p2_fix_verify\simple_cube_0p2
+  --load-settings B:\ohmic\Snapmaker-OrcaSlicer-cli-0p2-fix\resources\profiles\Snapmaker\machine\Snapmaker U1 (0.2 nozzle).json
+  --load-settings B:\ohmic\Snapmaker-OrcaSlicer-cli-0p2-fix\resources\profiles\Snapmaker\process\0.06 Standard @Snapmaker U1 (0.2 nozzle).json
+  --load-filaments B:\ohmic\Snapmaker-OrcaSlicer-cli-0p2-fix\resources\profiles\Snapmaker\filament\Generic PLA @U1 0.2 nozzle.json
+  B:\ohmic\Snapmaker-OrcaSlicer\outputs\amp_multitool_resolution_fixture\probes\simple_cube_10mm.stl
+```
+
+Result:
+
+```text
+exit code: 0
+G-code exported:
+B:\ohmic\Snapmaker-OrcaSlicer-cli-0p2-fix\outputs\cli_0p2_fix_verify\simple_cube_0p2\plate_1.gcode
+```
+
+Additional U1 0.2 process-wrapper checks on the same cube:
+
+| Process wrapper | G-code exported |
+| --- | --- |
+| `0.06 High Quality @Snapmaker U1 (0.2 nozzle).json` | Yes |
+| `0.06 Standard @Snapmaker U1 (0.2 nozzle).json` | Yes |
+| `0.08 High Quality @Snapmaker U1 (0.2 nozzle).json` | Yes |
+| `0.08 Standard @Snapmaker U1 (0.2 nozzle).json` | Yes |
+| `0.10 High Quality @Snapmaker U1 (0.2 nozzle).json` | Yes |
+| `0.10 Standard @Snapmaker U1 (0.2 nozzle).json` | Yes |
+| `0.12 Standard @Snapmaker U1 (0.2 nozzle).json` | Yes |
+| `0.14 Standard @Snapmaker U1 (0.2 nozzle).json` | Yes |
+
+One attempted U1 0.4 control did not complete because the initially selected `Generic PLA @U1 0.4 nozzle.json` filament file does not exist in this clean worktree, and a substitute 0.4 U1 filament crashed very early. That separate control issue was not used as evidence for the U1 0.2 fix.
 
 ## Recommended Next Step
 
@@ -295,7 +334,7 @@ Then:
 
 | Result | Action |
 | --- | --- |
-| GUI passes | Finish the clean CLI fix branch, build, test, and open a small Snapmaker PR. |
+| GUI passes | Open a small Snapmaker PR from the clean CLI fix branch. |
 | GUI fails | Document the exact invalid profile/config state before proposing a profile fix. |
 
 ## Required Validation Before Any PR
@@ -303,9 +342,10 @@ Then:
 Before opening a Snapmaker PR, verify:
 
 ```text
-U1 0.2 plain cube exits 0
-U1 0.2 micro/detail probe exits 0 when geometry is valid
-U1 0.4 cube/probe control still exits 0
+U1 0.2 plain cube exits 0: done
+U1 0.2 process wrapper matrix exports G-code: done
+U1 0.2 micro/detail probe exits 0 when geometry is valid: still recommended
+U1 0.4 cube/probe control still exits 0: still needs a clean matching filament/profile control
 U1 0.6 and U1 0.8 fixture probes still exit 0 if practical
 ```
 
