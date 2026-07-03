@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <string>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <math.h>
 
@@ -1729,6 +1730,47 @@ int CLI::run(int argc, char **argv)
             else if (config_type == "process") {
                 //config.set("print_settings_id", config_name, true);
                 //print_inherits = config.option<ConfigOptionString>("inherits", true)->value;
+                std::set<std::string> inherited_files;
+                std::function<int(const std::string&, DynamicPrintConfig&)> resolve_process_inherits =
+                    [&](const std::string& source_file, DynamicPrintConfig& child_config) -> int {
+                    const ConfigOptionString* inherits_opt = child_config.option<ConfigOptionString>("inherits", true);
+                    if (inherits_opt == nullptr || inherits_opt->value.empty())
+                        return 0;
+
+                    boost::filesystem::path parent_path = boost::filesystem::path(source_file).parent_path() /
+                        boost::filesystem::path(inherits_opt->value + ".json");
+                    if (!boost::filesystem::exists(parent_path))
+                        return 0;
+
+                    const std::string parent_file = parent_path.string();
+                    if (!inherited_files.insert(parent_file).second)
+                        return 0;
+
+                    DynamicPrintConfig parent_config;
+                    std::map<std::string, std::string> parent_key_values;
+                    std::string parent_reason;
+                    parent_config.load_from_json(parent_file, config_substitution_rule, parent_key_values, parent_reason);
+                    if (!parent_reason.empty()) {
+                        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ":Can not load inherited process config from file " << parent_file << "\n";
+                        return CLI_CONFIG_FILE_ERROR;
+                    }
+
+                    auto parent_type_iter = parent_key_values.find(BBL_JSON_KEY_TYPE);
+                    if (parent_type_iter == parent_key_values.end() || parent_type_iter->second != "process")
+                        return 0;
+
+                    int ret = resolve_process_inherits(parent_file, parent_config);
+                    if (ret)
+                        return ret;
+
+                    parent_config.apply(child_config, true);
+                    child_config = std::move(parent_config);
+                    return 0;
+                };
+
+                int ret = resolve_process_inherits(file, config);
+                if (ret)
+                    return ret;
             }
             else if (config_type == "filament") {
                 auto filament_id_iter = key_values.find(BBL_JSON_KEY_FILAMENT_ID);
