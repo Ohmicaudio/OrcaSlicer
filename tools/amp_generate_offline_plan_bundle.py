@@ -15,6 +15,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from amp_tool_class_assignment_solver import assignment_row, assignments_for, load_regions
+from amp_u1_process_profile_resolver import resolve_regions
 
 
 PROFILE_MAP: Dict[str, Dict[str, str]] = {
@@ -85,17 +86,28 @@ def gcode_status(repo_root: Path, region_name: str, tool_class: str, metrics: Di
 def plan_rows(repo_root: Path, input_path: Path, metrics_path: Path) -> List[Dict[str, object]]:
     regions = load_regions(input_path)
     assignments = assignments_for(regions)
+    process_queue = resolve_regions(regions, repo_root)
+    process_by_region = {str(item["region_name"]): item for item in process_queue}
     metrics = load_metrics(metrics_path)
     rows: List[Dict[str, object]] = []
     for assignment in assignments:
         row = assignment_row(assignment)
         tool_class = str(row["recommended_tool_class"])
         profile = PROFILE_MAP.get(tool_class, {})
+        process_selection = process_by_region.get(str(row["region_name"]), {})
         rows.append({
             **row,
             "recommended_nozzle": tool_class if tool_class in PROFILE_MAP else "",
             "intended_process_profile": profile.get("process_profile", ""),
             "intended_filament_profile": profile.get("filament_profile", ""),
+            "selected_u1_process_profile": process_selection.get("selected_process_profile", profile.get("process_profile", "")),
+            "selected_layer_height_mm": process_selection.get("selected_layer_height_mm", ""),
+            "selected_line_width_class": process_selection.get("selected_line_width_class", row.get("recommended_line_width_class", "")),
+            "requested_layer_height_mm": process_selection.get("requested_layer_height_mm", ""),
+            "process_selection_reason": process_selection.get("selection_reason", ""),
+            "fallback_process_profile": process_selection.get("fallback_process_profile", ""),
+            "local_z_future_required": process_selection.get("local_z_future_required", False),
+            "touchscreen_mixed_nozzle_blocked": process_selection.get("touchscreen_mixed_nozzle_blocked", True),
             "gcode_status": gcode_status(repo_root, str(row["region_name"]), tool_class, metrics),
         })
     return rows
@@ -124,6 +136,14 @@ def write_assignment_csv(rows: Iterable[Dict[str, object]], path: Path) -> None:
         "risk_flags",
         "reason",
         "intended_process_profile",
+        "selected_u1_process_profile",
+        "selected_layer_height_mm",
+        "selected_line_width_class",
+        "requested_layer_height_mm",
+        "process_selection_reason",
+        "fallback_process_profile",
+        "local_z_future_required",
+        "touchscreen_mixed_nozzle_blocked",
         "intended_filament_profile",
         "gcode_exists",
         "gcode_path",
@@ -150,7 +170,13 @@ def write_slice_queue(rows: List[Dict[str, object]], path: Path) -> None:
         queue.append({
             "region_name": row["region_name"],
             "tool_class": row["recommended_tool_class"],
-            "process_profile": row.get("intended_process_profile", ""),
+            "process_profile": row.get("selected_u1_process_profile", row.get("intended_process_profile", "")),
+            "selected_layer_height_mm": row.get("selected_layer_height_mm", ""),
+            "selected_line_width_class": row.get("selected_line_width_class", ""),
+            "requested_layer_height_mm": row.get("requested_layer_height_mm", ""),
+            "fallback_process_profile": row.get("fallback_process_profile", ""),
+            "local_z_future_required": row.get("local_z_future_required", False),
+            "touchscreen_mixed_nozzle_blocked": row.get("touchscreen_mixed_nozzle_blocked", True),
             "filament_profile": row.get("intended_filament_profile", ""),
             "existing_gcode": row.get("gcode_status", {}),
         })

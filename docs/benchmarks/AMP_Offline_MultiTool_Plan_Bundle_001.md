@@ -9,6 +9,7 @@ The bundle connects:
 ```text
 fixture regions
 -> cost-gated solver assignment
+-> U1 process-profile selection
 -> fallback and risk flags
 -> slice queue
 -> per-region G-code status
@@ -30,9 +31,9 @@ Generated ignored artifacts:
 | Artifact | Purpose |
 | --- | --- |
 | `outputs/amp_offline_plan_bundle_001/plan.json` | Cost-gated advisory planner output. |
-| `outputs/amp_offline_plan_bundle_001/slice_queue.json` | Per-region intended slicer inputs and existing G-code status. |
+| `outputs/amp_offline_plan_bundle_001/slice_queue.json` | Per-region selected U1 process profiles, intended slicer inputs, and existing G-code status. |
 | `outputs/amp_offline_plan_bundle_001/risk_report.md` | Human-readable risk/fallback summary. |
-| `outputs/amp_offline_plan_bundle_001/assignment_table.csv` | Tabular assignment output. |
+| `outputs/amp_offline_plan_bundle_001/assignment_table.csv` | Tabular assignment and process-profile output. |
 | `outputs/amp_offline_plan_bundle_001/README.md` | Bundle overview. |
 | `outputs/amp_offline_plan_bundle_001/assignment_solver_output.md` | Direct markdown output from the solver. |
 
@@ -87,6 +88,23 @@ normal_visible_detail_zone -> 0.4
 structural_shell_zone      -> 0.6
 bulk_zone                  -> 0.8
 ```
+
+## U1 Process-Profile Queue
+
+The offline bundle now includes concrete U1 process-profile selections from:
+
+```text
+tools/amp_u1_process_profile_resolver.py
+```
+
+| Region | Tool | Selected U1 process profile | Layer | Width class | Local-Z future flag | Fallback process |
+| --- | --- | --- | ---: | --- | --- | --- |
+| `micro_detail_zone` | 0.2 | `resources/profiles/Snapmaker/process/0.06 Standard @Snapmaker U1 (0.2 nozzle).json` | 0.06 | 0.22 | true | `resources/profiles/Snapmaker/process/0.20 Standard @Snapmaker U1 (0.4 nozzle).json` |
+| `normal_visible_detail_zone` | 0.4 | `resources/profiles/Snapmaker/process/0.16 Optimal @Snapmaker U1 (0.4 nozzle).json` | 0.16 | 0.42-0.45 | false | `resources/profiles/Snapmaker/process/0.08 Standard @Snapmaker U1 (0.2 nozzle).json` |
+| `structural_shell_zone` | 0.6 | `resources/profiles/Snapmaker/process/0.24 Standard @Snapmaker U1 (0.6 nozzle).json` | 0.24 | 0.62 | false | `resources/profiles/Snapmaker/process/0.20 Standard @Snapmaker U1 (0.4 nozzle).json` |
+| `bulk_zone` | 0.8 | `resources/profiles/Snapmaker/process/0.40 Standard @Snapmaker U1 (0.8 nozzle).json` | 0.40 | 0.82 | false | `resources/profiles/Snapmaker/process/0.24 Standard @Snapmaker U1 (0.6 nozzle).json` |
+
+These profile selections are advisory slice-queue entries only. They do not create a combined mixed-nozzle print job.
 
 ## Fallback Table
 
@@ -145,6 +163,7 @@ These are slicer/G-code-derived values only.
 - The fixture metadata now includes 3D feature fields and line/path role fields.
 - The assignment is no longer based only on 2D area/path labels; it also includes XY feature size, Z feature height, vertical persistence, surface role, and line type.
 - Local-Z need can be flagged as future work without implementing local-Z behavior.
+- AMP can now map region metadata through tool class to concrete U1 process profile selection.
 
 ## What This Does Not Prove
 
@@ -170,6 +189,7 @@ The next safe implementation step is a planner-to-sidecar/debug-artifact mapping
 
 ```text
 offline plan bundle with 3D/line-type metadata
+-> selected U1 process-profile queue
 -> AdaptiveManufacturingSidecar-compatible data
 -> debug artifact JSON
 ```
