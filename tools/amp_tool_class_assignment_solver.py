@@ -32,7 +32,17 @@ class Region:
     detail_criticality: str = "low"
     wall_or_bulk: str = "normal_wall"
     min_feature_size_mm: float = 1.0
+    xy_min_feature_size_mm: float = 1.0
+    xy_nominal_feature_size_mm: float = 1.0
+    z_feature_height_mm: float = 0.20
+    vertical_extent_mm: float = 0.20
+    vertical_extent_layers: int = 1
     target_layer_height_mm: float = 0.20
+    surface_slope_degrees: float = 0.0
+    local_z_candidate: bool = False
+    z_resolution_criticality: str = "none"
+    line_type: str = "internal_perimeter"
+    line_role_visibility: str = "internal"
     estimated_region_area_mm2: float = 0.0
     estimated_path_length_mm: float = 0.0
     toolchange_allowed: bool = True
@@ -55,6 +65,8 @@ class Assignment:
     recommended_line_width_class: str
     fallback_tool_class: str
     reason: str
+    line_type: str = ""
+    line_role_visibility: str = ""
     risk_flags: List[str] = field(default_factory=list)
     confidence: float = 0.0
     cost_gate_passed: bool = True
@@ -66,154 +78,164 @@ class Assignment:
 def example_regions() -> List[Region]:
     return [
         Region(
-            region_name="micro_detail_zone",
+            region_name="shallow_logo_top_surface",
             visibility="visible",
             detail_criticality="micro",
-            wall_or_bulk="thin_wall",
+            wall_or_bulk="normal_wall",
             min_feature_size_mm=0.35,
+            xy_min_feature_size_mm=0.35,
+            xy_nominal_feature_size_mm=0.55,
+            z_feature_height_mm=0.12,
+            vertical_extent_mm=0.12,
+            vertical_extent_layers=2,
             target_layer_height_mm=0.06,
+            surface_slope_degrees=0.0,
+            local_z_candidate=True,
+            z_resolution_criticality="micro",
+            line_type="top_surface",
+            line_role_visibility="cosmetic",
             estimated_region_area_mm2=250.0,
             estimated_path_length_mm=900.0,
         ),
         Region(
-            region_name="normal_visible_detail_zone",
+            region_name="tall_visible_side_text",
             visibility="visible",
             detail_criticality="high",
-            wall_or_bulk="normal_wall",
-            min_feature_size_mm=0.75,
-            target_layer_height_mm=0.16,
+            wall_or_bulk="thin_wall",
+            min_feature_size_mm=0.50,
+            xy_min_feature_size_mm=0.50,
+            xy_nominal_feature_size_mm=0.80,
+            z_feature_height_mm=6.0,
+            vertical_extent_mm=6.0,
+            vertical_extent_layers=30,
+            target_layer_height_mm=0.12,
+            surface_slope_degrees=90.0,
+            z_resolution_criticality="medium",
+            line_type="external_perimeter",
+            line_role_visibility="cosmetic",
             estimated_region_area_mm2=900.0,
             estimated_path_length_mm=1500.0,
         ),
         Region(
-            region_name="structural_shell_zone",
+            region_name="hidden_internal_perimeter",
             visibility="internal",
             detail_criticality="low",
             wall_or_bulk="structural_shell",
             min_feature_size_mm=2.4,
+            xy_min_feature_size_mm=2.4,
+            xy_nominal_feature_size_mm=4.0,
+            z_feature_height_mm=10.0,
+            vertical_extent_mm=10.0,
+            vertical_extent_layers=42,
             target_layer_height_mm=0.24,
+            line_type="internal_perimeter",
+            line_role_visibility="structural",
             estimated_region_area_mm2=2400.0,
             estimated_path_length_mm=2300.0,
         ),
         Region(
-            region_name="bulk_zone",
-            visibility="hidden",
-            detail_criticality="none",
-            wall_or_bulk="bulk",
-            min_feature_size_mm=5.0,
-            target_layer_height_mm=0.40,
-            estimated_region_area_mm2=6500.0,
-            estimated_path_length_mm=5200.0,
-        ),
-        Region(
-            region_name="abrasive_micro_detail_rejected",
-            visibility="visible",
-            detail_criticality="micro",
-            wall_or_bulk="thin_wall",
-            min_feature_size_mm=0.35,
-            target_layer_height_mm=0.06,
-            estimated_region_area_mm2=160.0,
-            estimated_path_length_mm=500.0,
-            material_risk="abrasive",
-        ),
-        Region(
-            region_name="no_toolchange_single_nozzle_fallback",
-            visibility="hidden",
-            detail_criticality="none",
-            wall_or_bulk="bulk",
-            min_feature_size_mm=6.0,
-            target_layer_height_mm=0.40,
-            estimated_region_area_mm2=7000.0,
-            estimated_path_length_mm=6000.0,
-            toolchange_allowed=False,
-        ),
-        Region(
-            region_name="thin_wall_reject_large_tool",
+            region_name="support_interface_should_stay_conservative",
             visibility="internal",
             detail_criticality="medium",
-            wall_or_bulk="thin_wall",
-            min_feature_size_mm=0.55,
-            target_layer_height_mm=0.12,
-            estimated_region_area_mm2=350.0,
-            estimated_path_length_mm=900.0,
-        ),
-        Region(
-            region_name="low_confidence_fallback",
-            visibility="internal",
-            detail_criticality="medium",
-            wall_or_bulk="structural_shell",
-            min_feature_size_mm=1.8,
-            target_layer_height_mm=0.24,
-            estimated_region_area_mm2=1900.0,
-            estimated_path_length_mm=1900.0,
-            confidence_hint="low",
-        ),
-        Region(
-            region_name="tiny_micro_detail_not_worth_toolchange",
-            visibility="visible",
-            detail_criticality="micro",
-            wall_or_bulk="thin_wall",
-            min_feature_size_mm=0.35,
-            target_layer_height_mm=0.06,
-            estimated_region_area_mm2=45.0,
-            estimated_path_length_mm=120.0,
-            current_tool_class="0.4",
-        ),
-        Region(
-            region_name="large_micro_detail_panel_worth_0p2",
-            visibility="visible",
-            detail_criticality="micro",
-            wall_or_bulk="thin_wall",
-            min_feature_size_mm=0.40,
-            target_layer_height_mm=0.06,
+            wall_or_bulk="normal_wall",
+            min_feature_size_mm=0.8,
+            xy_min_feature_size_mm=0.8,
+            xy_nominal_feature_size_mm=1.2,
+            z_feature_height_mm=0.2,
+            vertical_extent_mm=1.0,
+            vertical_extent_layers=5,
+            target_layer_height_mm=0.20,
+            line_type="support_interface",
+            line_role_visibility="mating",
             estimated_region_area_mm2=1200.0,
-            estimated_path_length_mm=2600.0,
-            current_tool_class="0.4",
+            estimated_path_length_mm=1600.0,
         ),
         Region(
-            region_name="small_bulk_region_not_worth_0p8",
+            region_name="bridge_reject_large_tool",
+            visibility="internal",
+            detail_criticality="medium",
+            wall_or_bulk="normal_wall",
+            min_feature_size_mm=1.0,
+            xy_min_feature_size_mm=1.0,
+            xy_nominal_feature_size_mm=2.0,
+            z_feature_height_mm=0.24,
+            vertical_extent_mm=1.2,
+            vertical_extent_layers=5,
+            target_layer_height_mm=0.24,
+            line_type="bridge",
+            line_role_visibility="structural",
+            estimated_region_area_mm2=1800.0,
+            estimated_path_length_mm=2200.0,
+        ),
+        Region(
+            region_name="painted_surface_color_skin",
+            visibility="visible",
+            detail_criticality="high",
+            wall_or_bulk="normal_wall",
+            min_feature_size_mm=0.6,
+            xy_min_feature_size_mm=0.6,
+            xy_nominal_feature_size_mm=1.0,
+            z_feature_height_mm=0.2,
+            vertical_extent_mm=0.8,
+            vertical_extent_layers=4,
+            target_layer_height_mm=0.12,
+            line_type="color_detail_skin",
+            line_role_visibility="cosmetic",
+            estimated_region_area_mm2=1600.0,
+            estimated_path_length_mm=2200.0,
+        ),
+        Region(
+            region_name="local_z_micro_detail_candidate",
+            visibility="visible",
+            detail_criticality="micro",
+            wall_or_bulk="normal_wall",
+            min_feature_size_mm=0.35,
+            xy_min_feature_size_mm=0.35,
+            xy_nominal_feature_size_mm=0.50,
+            z_feature_height_mm=0.08,
+            vertical_extent_mm=0.08,
+            vertical_extent_layers=1,
+            target_layer_height_mm=0.06,
+            local_z_candidate=True,
+            z_resolution_criticality="micro",
+            line_type="painted_surface",
+            line_role_visibility="cosmetic",
+            estimated_region_area_mm2=500.0,
+            estimated_path_length_mm=1000.0,
+        ),
+        Region(
+            region_name="bulk_region_worth_0p8",
+            visibility="hidden",
+            detail_criticality="none",
+            wall_or_bulk="bulk",
+            min_feature_size_mm=8.0,
+            xy_min_feature_size_mm=8.0,
+            xy_nominal_feature_size_mm=20.0,
+            z_feature_height_mm=25.0,
+            vertical_extent_mm=25.0,
+            vertical_extent_layers=63,
+            target_layer_height_mm=0.40,
+            line_type="sparse_infill",
+            line_role_visibility="hidden",
+            estimated_region_area_mm2=8000.0,
+            estimated_path_length_mm=7000.0,
+        ),
+        Region(
+            region_name="bulk_region_too_small_for_0p8",
             visibility="hidden",
             detail_criticality="none",
             wall_or_bulk="bulk",
             min_feature_size_mm=4.0,
+            xy_min_feature_size_mm=4.0,
+            xy_nominal_feature_size_mm=8.0,
+            z_feature_height_mm=4.0,
+            vertical_extent_mm=4.0,
+            vertical_extent_layers=10,
             target_layer_height_mm=0.40,
             estimated_region_area_mm2=180.0,
             estimated_path_length_mm=300.0,
-            current_tool_class="0.4",
-        ),
-        Region(
-            region_name="large_hidden_bulk_worth_0p8",
-            visibility="hidden",
-            detail_criticality="none",
-            wall_or_bulk="bulk",
-            min_feature_size_mm=6.0,
-            target_layer_height_mm=0.40,
-            estimated_region_area_mm2=8000.0,
-            estimated_path_length_mm=7000.0,
-            current_tool_class="0.4",
-        ),
-        Region(
-            region_name="current_tool_0p4_no_toolchange_fallback",
-            visibility="hidden",
-            detail_criticality="none",
-            wall_or_bulk="bulk",
-            min_feature_size_mm=6.0,
-            target_layer_height_mm=0.40,
-            estimated_region_area_mm2=8000.0,
-            estimated_path_length_mm=7000.0,
-            toolchange_allowed=False,
-            current_tool_class="0.4",
-        ),
-        Region(
-            region_name="clog_risk_micro_detail_fallback_0p4",
-            visibility="visible",
-            detail_criticality="micro",
-            wall_or_bulk="thin_wall",
-            min_feature_size_mm=0.40,
-            target_layer_height_mm=0.06,
-            estimated_region_area_mm2=1400.0,
-            estimated_path_length_mm=2400.0,
-            material_risk="clog_risk",
+            line_type="sparse_infill",
+            line_role_visibility="hidden",
             current_tool_class="0.4",
         ),
     ]
@@ -234,6 +256,13 @@ def as_float(value: object, default: float) -> float:
         return default
 
 
+def as_int(value: object, default: int) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
 def normalize_generated_region(raw: Dict[str, object]) -> Region:
     name = str(raw.get("region_name", "unnamed_region"))
     intended = str(raw.get("intended_nozzle", "0.4"))
@@ -244,7 +273,16 @@ def normalize_generated_region(raw: Dict[str, object]) -> Region:
             detail_criticality="micro",
             wall_or_bulk="thin_wall",
             min_feature_size_mm=0.35,
+            xy_min_feature_size_mm=0.35,
+            xy_nominal_feature_size_mm=0.55,
+            z_feature_height_mm=0.12,
+            vertical_extent_mm=0.45,
+            vertical_extent_layers=6,
             target_layer_height_mm=0.06,
+            local_z_candidate=True,
+            z_resolution_criticality="micro",
+            line_type="external_perimeter",
+            line_role_visibility="cosmetic",
             estimated_region_area_mm2=250.0,
             estimated_path_length_mm=900.0,
             current_tool_class="0.4",
@@ -257,7 +295,15 @@ def normalize_generated_region(raw: Dict[str, object]) -> Region:
             detail_criticality="high",
             wall_or_bulk="normal_wall",
             min_feature_size_mm=0.65,
+            xy_min_feature_size_mm=0.65,
+            xy_nominal_feature_size_mm=1.0,
+            z_feature_height_mm=0.6,
+            vertical_extent_mm=2.4,
+            vertical_extent_layers=15,
             target_layer_height_mm=0.16,
+            z_resolution_criticality="medium",
+            line_type="top_surface",
+            line_role_visibility="cosmetic",
             estimated_region_area_mm2=900.0,
             estimated_path_length_mm=1500.0,
             current_tool_class="0.4",
@@ -270,7 +316,14 @@ def normalize_generated_region(raw: Dict[str, object]) -> Region:
             detail_criticality="low",
             wall_or_bulk="structural_shell",
             min_feature_size_mm=2.0,
+            xy_min_feature_size_mm=2.0,
+            xy_nominal_feature_size_mm=4.0,
+            z_feature_height_mm=8.0,
+            vertical_extent_mm=8.0,
+            vertical_extent_layers=33,
             target_layer_height_mm=0.24,
+            line_type="internal_perimeter",
+            line_role_visibility="structural",
             estimated_region_area_mm2=2400.0,
             estimated_path_length_mm=2300.0,
             current_tool_class="0.4",
@@ -282,7 +335,14 @@ def normalize_generated_region(raw: Dict[str, object]) -> Region:
         detail_criticality="none",
         wall_or_bulk="bulk",
         min_feature_size_mm=5.0,
+        xy_min_feature_size_mm=5.0,
+        xy_nominal_feature_size_mm=12.0,
+        z_feature_height_mm=12.0,
+        vertical_extent_mm=12.0,
+        vertical_extent_layers=30,
         target_layer_height_mm=0.40,
+        line_type="sparse_infill",
+        line_role_visibility="hidden",
         estimated_region_area_mm2=6500.0,
         estimated_path_length_mm=5200.0,
         current_tool_class="0.4",
@@ -299,7 +359,17 @@ def region_from_dict(raw: Dict[str, object]) -> Region:
         detail_criticality=str(raw.get("detail_criticality", "low")),
         wall_or_bulk=str(raw.get("wall_or_bulk", "normal_wall")),
         min_feature_size_mm=as_float(raw.get("min_feature_size_mm"), 1.0),
+        xy_min_feature_size_mm=as_float(raw.get("xy_min_feature_size_mm"), as_float(raw.get("min_feature_size_mm"), 1.0)),
+        xy_nominal_feature_size_mm=as_float(raw.get("xy_nominal_feature_size_mm"), as_float(raw.get("min_feature_size_mm"), 1.0)),
+        z_feature_height_mm=as_float(raw.get("z_feature_height_mm"), as_float(raw.get("target_layer_height_mm"), 0.20)),
+        vertical_extent_mm=as_float(raw.get("vertical_extent_mm"), as_float(raw.get("target_layer_height_mm"), 0.20)),
+        vertical_extent_layers=as_int(raw.get("vertical_extent_layers"), 1),
         target_layer_height_mm=as_float(raw.get("target_layer_height_mm"), 0.20),
+        surface_slope_degrees=as_float(raw.get("surface_slope_degrees"), 0.0),
+        local_z_candidate=as_bool(raw.get("local_z_candidate"), False),
+        z_resolution_criticality=str(raw.get("z_resolution_criticality", "none")),
+        line_type=str(raw.get("line_type", "internal_perimeter")),
+        line_role_visibility=str(raw.get("line_role_visibility", raw.get("visibility", "internal"))),
         estimated_region_area_mm2=as_float(raw.get("estimated_region_area_mm2"), 0.0),
         estimated_path_length_mm=as_float(raw.get("estimated_path_length_mm"), 0.0),
         toolchange_allowed=as_bool(raw.get("toolchange_allowed"), True),
@@ -335,6 +405,21 @@ def confidence_for(region: Region, tool_class: str, risks: List[str], base: floa
     if risks:
         return min(base, 0.70)
     return base
+
+
+def is_visible_or_cosmetic(region: Region) -> bool:
+    return region.visibility == "visible" or region.line_role_visibility in {"visible", "cosmetic", "mating"}
+
+
+def is_hidden_or_internal(region: Region) -> bool:
+    return region.visibility in {"hidden", "internal"} and region.line_role_visibility in {"hidden", "internal", "structural"}
+
+
+def add_z_risks(region: Region, risks: List[str]) -> None:
+    if region.local_z_candidate:
+        risks.append("local_z_candidate")
+    if region.local_z_candidate and region.z_resolution_criticality in {"high", "micro"} and is_visible_or_cosmetic(region):
+        risks.append("local_z_future_required")
 
 
 def cost_gate(region: Region, tool_class: str, fallback_tool: str, risks: List[str]) -> tuple[str, bool, str, str]:
@@ -391,6 +476,8 @@ def finalize_assignment(
     confidence = confidence_for(region, final_tool, risks, base_confidence)
     return Assignment(
         region_name=region.region_name,
+        line_type=region.line_type,
+        line_role_visibility=region.line_role_visibility,
         recommended_tool_class=final_tool,
         recommended_layer_height_class=info["layer"],
         recommended_line_width_class=info["width"],
@@ -408,6 +495,7 @@ def finalize_assignment(
 def assign(region: Region) -> Assignment:
     risks: List[str] = [TOUCHSCREEN_WARNING]
     reason_parts: List[str] = []
+    add_z_risks(region, risks)
 
     if region.single_nozzle_mode or not region.toolchange_allowed:
         risks.append("toolchange_disabled")
@@ -420,6 +508,8 @@ def assign(region: Region) -> Assignment:
             "stock",
             region.current_tool_class or "0.4",
             reason,
+            region.line_type,
+            region.line_role_visibility,
             risks,
             confidence,
             False,
@@ -433,28 +523,93 @@ def assign(region: Region) -> Assignment:
         return finalize_assignment(region, "0.4", "0.4", reason, risks, 0.55)
 
     risk_material = region.material_risk in {"clog_risk", "flexible", "abrasive"}
-    visible = region.visibility == "visible"
+    visible = is_visible_or_cosmetic(region)
     detail = region.detail_criticality
+    line_type = region.line_type
 
-    if detail == "micro" and visible:
-        if not risk_material and region.min_feature_size_mm >= 0.35:
+    if line_type in {"bridge", "overhang"}:
+        risks.append("bridge_or_overhang_sensitive")
+        return finalize_assignment(region, "0.4", "0.4", "Bridge/overhang regions use conservative 0.4 fallback until validated.", risks, 0.60)
+
+    if line_type == "support_interface":
+        risks.append("support_interface_risk")
+        return finalize_assignment(region, "0.4", "0.4", "Support interface is mating/quality-sensitive and stays conservative.", risks, 0.66)
+
+    if line_type == "support":
+        if is_hidden_or_internal(region) and region.estimated_region_area_mm2 >= 3000.0 and region.estimated_path_length_mm >= 3000.0:
+            risks.append("support_large_tool_review")
+            return finalize_assignment(region, "0.6", "0.4", "Non-interface support may use a larger tool only after review.", risks, 0.55)
+        return finalize_assignment(region, "0.4", "0.4", "Support remains conservative unless enough non-interface support volume exists.", risks, 0.62)
+
+    if line_type in {"painted_surface", "color_detail_skin"}:
+        risks.append("future_surface_color_track")
+        if detail in {"micro", "high"} and region.xy_min_feature_size_mm <= 0.45 and not risk_material:
             risks.append("high_cost_detail_tool")
             risks.append("preview_required")
-            reason_parts.append("Visible micro detail is plausible for the 0.2 fine/detail class.")
+            reason_parts.append("Painted/color-detail skin is visible cosmetic detail with fine XY/Z requirements.")
+            return finalize_assignment(region, "0.2", "0.4", " ".join(reason_parts), risks, 0.68)
+        risks.append("avoid_large_visible_tool")
+        return finalize_assignment(region, "0.4", "0.2", "Painted/color-detail skin is visible/cosmetic and stays on a conservative visible-detail tool.", risks, 0.70)
+
+    if line_type in {"top_surface", "bottom_surface"} and visible:
+        if region.surface_slope_degrees > 10.0:
+            risks.append("sloped_top_surface_visual_review")
+        if detail in {"micro", "high"} and region.xy_min_feature_size_mm <= 0.40 and region.z_resolution_criticality in {"high", "micro"} and not risk_material:
+            risks.append("high_cost_detail_tool")
+            risks.append("preview_required")
+            reason_parts.append("Visible top detail has fine XY/Z requirements; 0.2 is detail-driven, not speed-driven.")
+            return finalize_assignment(region, "0.2", "0.4", " ".join(reason_parts), risks, 0.68)
+        risks.append("avoid_large_visible_tool")
+        return finalize_assignment(region, "0.4", "0.2", "Top/cosmetic surfaces stay on the conservative visible-detail class.", risks, 0.76)
+
+    if line_type == "external_perimeter" and visible:
+        if detail in {"micro", "high"} and not risk_material and region.xy_min_feature_size_mm >= 0.35 and region.z_feature_height_mm <= 0.20:
+            risks.append("high_cost_detail_tool")
+            risks.append("preview_required")
+            reason_parts.append("Visible external perimeter detail is plausible for the 0.2 fine/detail class because XY and Z detail are both small.")
             return finalize_assignment(region, "0.2", "0.4", " ".join(reason_parts), risks, 0.72)
         if risk_material:
             risks.append(f"material_{region.material_risk}")
             reason_parts.append("0.2 is rejected for this material risk; use 0.4 as the safer visible-detail fallback.")
         else:
-            risks.append("micro_feature_below_documented_sliceable_bound")
-            reason_parts.append("Feature size is below the documented 0.35 mm 0.2-proxy sliceable lower bound; use 0.4 fallback unless validated.")
+            risks.append("avoid_large_visible_tool")
+            reason_parts.append("Visible external perimeter/detail geometry should use 0.4 unless fine XY/Z detail requires 0.2.")
         return finalize_assignment(region, "0.4", "0.4", " ".join(reason_parts), risks, 0.65)
+
+    if detail == "micro" and visible:
+        if not risk_material and region.xy_min_feature_size_mm >= 0.35 and region.z_resolution_criticality in {"high", "micro"}:
+            risks.append("high_cost_detail_tool")
+            risks.append("preview_required")
+            reason_parts.append("Visible micro detail is plausible for the 0.2 fine/detail class when XY/Z metadata supports it.")
+            return finalize_assignment(region, "0.2", "0.4", " ".join(reason_parts), risks, 0.70)
+        risks.append("avoid_large_visible_tool")
+        return finalize_assignment(region, "0.4", "0.4", "Visible detail lacks enough XY/Z evidence for 0.2; use 0.4 fallback.", risks, 0.65)
 
     if region.wall_or_bulk == "thin_wall":
         if region.min_feature_size_mm < 0.70:
             risks.append("reject_large_tool_for_thin_wall")
             return finalize_assignment(region, "0.4", "0.2", "Thin wall is too small for 0.6/0.8; use finer fallback.", risks, 0.62)
         return finalize_assignment(region, "0.4", "0.4", "Thin wall remains on the general class until validated.", risks, 0.70)
+
+    if line_type == "internal_perimeter":
+        if is_hidden_or_internal(region) and region.xy_min_feature_size_mm >= 1.8 and region.vertical_extent_layers >= 8:
+            risks.append("internal_perimeter_width_review")
+            return finalize_assignment(region, "0.6", "0.4", "Hidden/internal perimeter has enough XY size and vertical persistence for 0.6 review.", risks, 0.72)
+        risks.append("thin_or_low_persistence_internal")
+        return finalize_assignment(region, "0.4", "0.4", "Internal perimeter is too thin, visible, or vertically shallow for 0.6.", risks, 0.64)
+
+    if line_type == "internal_solid_infill":
+        if is_hidden_or_internal(region) and region.estimated_region_area_mm2 >= 3000.0 and region.estimated_path_length_mm >= 3000.0:
+            risks.append("internal_solid_large_tool_review")
+            return finalize_assignment(region, "0.6", "0.4", "Hidden/internal solid infill is a 0.6 review candidate.", risks, 0.68)
+        return finalize_assignment(region, "0.4", "0.4", "Internal solid infill remains 0.4 until the region is large enough.", risks, 0.62)
+
+    if line_type == "sparse_infill":
+        if is_hidden_or_internal(region) and region.estimated_region_area_mm2 >= 3000.0 and region.estimated_path_length_mm >= 3000.0 and region.xy_min_feature_size_mm >= 3.0:
+            risks.append("bulk_tool_cost_gate")
+            return finalize_assignment(region, "0.8", "0.6", "Hidden sparse infill/bulk is large enough for the 0.8 bulk class if cost gates pass.", risks, 0.72)
+        risks.append("medium_bulk")
+        return finalize_assignment(region, "0.6", "0.4", "Sparse infill/bulk is not large enough for 0.8; use 0.6/0.4 fallback.", risks, 0.66)
 
     if visible or detail in {"medium", "high"}:
         if region.wall_or_bulk == "structural_shell" and region.min_feature_size_mm >= 2.0 and detail in {"none", "low"}:
@@ -487,6 +642,8 @@ def assignments_for(regions: Iterable[Region]) -> List[Assignment]:
 def assignment_row(assignment: Assignment) -> Dict[str, object]:
     return {
         "region_name": assignment.region_name,
+        "line_type": assignment.line_type,
+        "line_role_visibility": assignment.line_role_visibility,
         "recommended_tool_class": assignment.recommended_tool_class,
         "recommended_layer_height_class": assignment.recommended_layer_height_class,
         "recommended_line_width_class": assignment.recommended_line_width_class,
@@ -513,13 +670,13 @@ def write_csv(assignments: List[Assignment], path: Path) -> None:
 
 def markdown(assignments: List[Assignment]) -> str:
     lines = [
-        "| Region | Tool | Layer class | Width class | Fallback | Cost gate | Cost reason | Confidence | Risk flags | Reason |",
-        "| --- | --- | --- | --- | --- | --- | --- | ---: | --- | --- |",
+        "| Region | Line type | Role | Tool | Layer class | Width class | Fallback | Cost gate | Cost reason | Confidence | Risk flags | Reason |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | ---: | --- | --- |",
     ]
     for item in assignments:
         row = assignment_row(item)
         lines.append(
-            f"| `{row['region_name']}` | `{row['recommended_tool_class']}` | "
+            f"| `{row['region_name']}` | `{row['line_type']}` | `{row['line_role_visibility']}` | `{row['recommended_tool_class']}` | "
             f"`{row['recommended_layer_height_class']}` | `{row['recommended_line_width_class']}` | "
             f"`{row['fallback_tool_class']}` | {row['cost_gate_passed']} | {row['cost_gate_reason']} | "
             f"{row['confidence']} | {row['risk_flags']} | {row['reason']} |"

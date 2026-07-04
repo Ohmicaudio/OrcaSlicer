@@ -44,12 +44,12 @@ Committed metadata:
 docs/benchmarks/AMP_MultiTool_Resolution_Fixture_001_Region_Metadata.json
 ```
 
-| Region | Visibility | Detail | Character | Min feature | Area | Path |
-| --- | --- | --- | --- | ---: | ---: | ---: |
-| `micro_detail_zone` | visible | micro | thin wall | 0.35 mm | 250.0 mm^2 | 900.0 mm |
-| `normal_visible_detail_zone` | visible | high | normal wall | 0.75 mm | 900.0 mm^2 | 1500.0 mm |
-| `structural_shell_zone` | internal | low | structural shell | 2.40 mm | 2400.0 mm^2 | 2300.0 mm |
-| `bulk_zone` | hidden | none | bulk | 5.00 mm | 6500.0 mm^2 | 5200.0 mm |
+| Region | Line type | Role | Visibility | Detail | XY min | Z feature | Vertical extent | Area | Path |
+| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `micro_detail_zone` | external_perimeter | cosmetic | visible | micro | 0.35 mm | 0.12 mm | 0.45 mm / 6 layers | 250.0 mm^2 | 900.0 mm |
+| `normal_visible_detail_zone` | top_surface | cosmetic | visible | high | 0.75 mm | 0.60 mm | 2.40 mm / 15 layers | 900.0 mm^2 | 1500.0 mm |
+| `structural_shell_zone` | internal_perimeter | structural | internal | low | 2.40 mm | 8.00 mm | 8.00 mm / 33 layers | 2400.0 mm^2 | 2300.0 mm |
+| `bulk_zone` | sparse_infill | hidden | hidden | none | 5.00 mm | 12.00 mm | 12.00 mm / 30 layers | 6500.0 mm^2 | 5200.0 mm |
 
 All four regions use:
 
@@ -72,12 +72,12 @@ current_tool_class = 0.4
 
 ## Cost-Gated Assignment Table
 
-| Region | Tool | Layer class | Width class | Fallback | Cost gate | Confidence |
-| --- | --- | --- | --- | --- | --- | ---: |
-| `micro_detail_zone` | 0.2 | 0.06-0.10 | 0.22 | 0.4 | pass | 0.70 |
-| `normal_visible_detail_zone` | 0.4 | 0.12-0.20 | 0.42-0.45 | 0.2 | pass | 0.70 |
-| `structural_shell_zone` | 0.6 | 0.24-0.36 | 0.62 | 0.4 | pass | 0.70 |
-| `bulk_zone` | 0.8 | 0.32-0.56 | 0.82 | 0.6 | pass | 0.70 |
+| Region | Line type | Tool | Layer class | Width class | Fallback | Cost gate | Confidence |
+| --- | --- | --- | --- | --- | --- | --- | ---: |
+| `micro_detail_zone` | external_perimeter | 0.2 | 0.06-0.10 | 0.22 | 0.4 | pass | 0.70 |
+| `normal_visible_detail_zone` | top_surface | 0.4 | 0.12-0.20 | 0.42-0.45 | 0.2 | pass | 0.70 |
+| `structural_shell_zone` | internal_perimeter | 0.6 | 0.24-0.36 | 0.62 | 0.4 | pass | 0.70 |
+| `bulk_zone` | sparse_infill | 0.8 | 0.32-0.56 | 0.82 | 0.6 | pass | 0.70 |
 
 Current fixture mapping:
 
@@ -101,9 +101,9 @@ bulk_zone                  -> 0.8
 
 | Region | Risk flags |
 | --- | --- |
-| `micro_detail_zone` | U1 touchscreen advisory, `high_cost_detail_tool`, `preview_required` |
-| `normal_visible_detail_zone` | U1 touchscreen advisory, `avoid_large_visible_tool` |
-| `structural_shell_zone` | U1 touchscreen advisory |
+| `micro_detail_zone` | U1 touchscreen advisory, `local_z_candidate`, `local_z_future_required`, `high_cost_detail_tool`, `preview_required` |
+| `normal_visible_detail_zone` | U1 touchscreen advisory, `sloped_top_surface_visual_review`, `avoid_large_visible_tool` |
+| `structural_shell_zone` | U1 touchscreen advisory, `internal_perimeter_width_review` |
 | `bulk_zone` | U1 touchscreen advisory, `bulk_tool_cost_gate` |
 
 The U1 touchscreen advisory means physical mixed-nozzle execution remains blocked for touchscreen workflows until Snapmaker provides a compatible per-tool metadata/logical mapping path.
@@ -142,12 +142,17 @@ These are slicer/G-code-derived values only.
 - The plan records intended process and filament profiles.
 - Per-region proxy G-code exists locally for each assigned tool class.
 - The planner output now exists as a bundle that a future sidecar/debug-artifact bridge could consume.
+- The fixture metadata now includes 3D feature fields and line/path role fields.
+- The assignment is no longer based only on 2D area/path labels; it also includes XY feature size, Z feature height, vertical persistence, surface role, and line type.
+- Local-Z need can be flagged as future work without implementing local-Z behavior.
 
 ## What This Does Not Prove
 
 This does not implement mixed-nozzle slicing.
 
 This does not implement a single-object mixed-nozzle toolpath.
+
+This does not implement local-Z.
 
 This does not validate physical mixed-nozzle behavior.
 
@@ -164,7 +169,7 @@ Fluidd-only experimentation remains future and hardware-dependent.
 The next safe implementation step is a planner-to-sidecar/debug-artifact mapping prototype:
 
 ```text
-offline plan bundle
+offline plan bundle with 3D/line-type metadata
 -> AdaptiveManufacturingSidecar-compatible data
 -> debug artifact JSON
 ```
