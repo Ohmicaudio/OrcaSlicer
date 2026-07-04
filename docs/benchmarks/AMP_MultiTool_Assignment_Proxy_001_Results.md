@@ -99,12 +99,18 @@ python tools/amp_gcode_metrics.py outputs/amp_multitool_resolution_fixture/regio
 
 | Region G-code | Layers | Extrusion moves | Travel moves | Positive E | Notes |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `micro_detail_zone_0p2.gcode` | 28 | 1 | 9,944 | 15.000 | Export succeeded, but preview inspection is required before using this as a quality signal. |
-| `normal_visible_detail_zone_0p4.gcode` | 16 | 209 | 4,812 | 294.637 | Export succeeded. |
-| `structural_shell_zone_0p6.gcode` | 16 | 542 | 6,280 | 1,046.271 | Export succeeded. |
-| `bulk_zone_0p8.gcode` | 17 | 649 | 1,160 | 2,115.332 | Export succeeded. |
+| `micro_detail_zone_0p2.gcode` | 28 | 8,790 | 924 | 540.789 | Export succeeded. Original low extrusion count was a metrics parser bug; preview inspection is still required. |
+| `normal_visible_detail_zone_0p4.gcode` | 16 | 4,323 | 667 | 994.508 | Export succeeded. |
+| `structural_shell_zone_0p6.gcode` | 16 | 6,253 | 503 | 1,647.293 | Export succeeded. |
+| `bulk_zone_0p8.gcode` | 17 | 1,686 | 105 | 2,398.589 | Export succeeded. |
 
 The metrics are slicer/G-code-derived only. They do not prove print time, print quality, strength, bonding, or dimensional accuracy.
+
+Diagnostic follow-up:
+
+```text
+docs/benchmarks/AMP_MultiTool_0p2_Micro_Region_Diagnostic.md
+```
 
 ## What This Proves
 

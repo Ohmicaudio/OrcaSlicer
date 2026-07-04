@@ -18,7 +18,7 @@ M73_TIME_RE = re.compile(r"^\s*M73\b.*(?:^|\s)R(\d+)\b")
 
 
 def parse_e_value(line: str) -> Optional[float]:
-    match = re.search(r"(?:^|\s)E(-?\d+(?:\.\d+)?)", line)
+    match = re.search(r"(?:^|\s)E(-?(?:\d+(?:\.\d+)?|\.\d+))", line)
     return float(match.group(1)) if match else None
 
 
