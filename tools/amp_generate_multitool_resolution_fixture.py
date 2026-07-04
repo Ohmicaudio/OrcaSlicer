@@ -234,6 +234,36 @@ def build_mesh() -> List[Triangle]:
     return tris
 
 
+def build_region_mesh(region_name: str) -> List[Triangle]:
+    tris: List[Triangle] = []
+    if region_name == "micro_detail_zone":
+        add_box(tris, -18, 18, -12, 12, 0, 1.2)
+        for idx, width in enumerate((0.22, 0.30, 0.42, 0.60, 0.90)):
+            y = -8 + idx * 4
+            add_box(tris, -15, 15, y, y + width, 1.2, 1.65)
+            add_box(tris, -14 + idx * 5, -14 + idx * 5 + width, 3, 8, 1.2, 1.65)
+        for idx in range(8):
+            add_box(tris, -14 + idx * 4, -13.4 + idx * 4, -2, -1.4, 1.2, 1.75)
+    elif region_name == "normal_visible_detail_zone":
+        add_box(tris, -22, 22, -16, 16, 0, 1.4)
+        add_sloped_panel(tris, -18, 18, -10, 10, 1.4, 1.7, 2.7)
+        add_bar_text(tris, -16, 4, scale=0.9, stroke=0.65, z0=2.7, z1=3.25)
+        for idx in range(5):
+            add_box(tris, -16 + idx * 7, -13 + idx * 7, -12, -11.2, 2.7, 3.1)
+    elif region_name == "structural_shell_zone":
+        add_box(tris, -22, 22, -18, 18, 0, 2.4)
+        add_box(tris, -14, 14, -10, 10, 2.4, 3.1)
+        for center in ((-9, 8), (9, 8)):
+            add_annular_cylinder(tris, center, HOLE_RADIUS + 0.4, 7.0, 2.4, 4.0)
+    elif region_name == "bulk_zone":
+        add_box(tris, -20, 20, -18, 18, 0, 5.0)
+        for idx in range(4):
+            add_box(tris, -15, 15, -13 + idx * 7, -10 + idx * 7, 5.0, 6.8)
+    else:
+        raise ValueError(f"unknown region: {region_name}")
+    return tris
+
+
 def regions() -> List[dict]:
     return [
         {
@@ -271,6 +301,61 @@ def regions() -> List[dict]:
     ]
 
 
+def region_assignments() -> List[dict]:
+    return [
+        {
+            "region_name": "micro_detail_zone",
+            "intended_tool_class": "0.2",
+            "intended_nozzle": "0.2",
+            "intended_layer_height_class": "0.06-0.10",
+            "intended_line_width_class": "0.22",
+            "fallback_tool_class": "0.4",
+            "reason": "Visible micro detail is plausible for the 0.2 fine/detail class.",
+            "risk_flags": [
+                "preview_required",
+                "touchscreen_mixed_nozzle_blocked",
+            ],
+        },
+        {
+            "region_name": "normal_visible_detail_zone",
+            "intended_tool_class": "0.4",
+            "intended_nozzle": "0.4",
+            "intended_layer_height_class": "0.12-0.20",
+            "intended_line_width_class": "0.42-0.45",
+            "fallback_tool_class": "0.2",
+            "reason": "Normal visible/detail geometry should use the 0.4 general class and avoid 0.8.",
+            "risk_flags": [
+                "avoid_large_visible_tool",
+                "touchscreen_mixed_nozzle_blocked",
+            ],
+        },
+        {
+            "region_name": "structural_shell_zone",
+            "intended_tool_class": "0.6",
+            "intended_nozzle": "0.6",
+            "intended_layer_height_class": "0.24-0.36",
+            "intended_line_width_class": "0.62",
+            "fallback_tool_class": "0.4",
+            "reason": "Internal/low-detail structural shell is a 0.6 candidate.",
+            "risk_flags": [
+                "touchscreen_mixed_nozzle_blocked",
+            ],
+        },
+        {
+            "region_name": "bulk_zone",
+            "intended_tool_class": "0.8",
+            "intended_nozzle": "0.8",
+            "intended_layer_height_class": "0.32-0.56",
+            "intended_line_width_class": "0.82",
+            "fallback_tool_class": "0.6",
+            "reason": "Hidden/internal bulk is large enough for the 0.8 bulk class.",
+            "risk_flags": [
+                "touchscreen_mixed_nozzle_blocked",
+            ],
+        },
+    ]
+
+
 def write_ascii_stl(tris: Iterable[Triangle], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="\n") as fh:
@@ -291,16 +376,32 @@ def write_regions(path: Path) -> None:
     path.write_text(json.dumps({"regions": regions()}, indent=2), encoding="utf-8", newline="\n")
 
 
+def write_split_regions(out_dir: Path, assignments_out: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for assignment in region_assignments():
+        region_name = str(assignment["region_name"])
+        write_ascii_stl(build_region_mesh(region_name), out_dir / f"{region_name}.stl")
+    assignments_out.parent.mkdir(parents=True, exist_ok=True)
+    assignments_out.write_text(json.dumps({"regions": region_assignments()}, indent=2), encoding="utf-8", newline="\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="outputs/amp_multitool_resolution_fixture/models/amp_multitool_resolution_fixture.stl")
     parser.add_argument("--regions-out", default="outputs/amp_multitool_resolution_fixture/models/amp_multitool_resolution_fixture_regions.json")
+    parser.add_argument("--split-regions", action="store_true")
+    parser.add_argument("--split-out-dir", default="outputs/amp_multitool_resolution_fixture/region_bodies")
+    parser.add_argument("--region-assignments-out", default="outputs/amp_multitool_resolution_fixture/region_bodies/region_assignments.json")
     args = parser.parse_args()
     tris = build_mesh()
     write_ascii_stl(tris, Path(args.out))
     write_regions(Path(args.regions_out))
     print(f"wrote {args.out} with {len(tris)} triangles")
     print(f"wrote {args.regions_out} with {len(regions())} regions")
+    if args.split_regions:
+        write_split_regions(Path(args.split_out_dir), Path(args.region_assignments_out))
+        print(f"wrote split region bodies to {args.split_out_dir}")
+        print(f"wrote {args.region_assignments_out} with {len(region_assignments())} assignments")
     return 0
 
 
