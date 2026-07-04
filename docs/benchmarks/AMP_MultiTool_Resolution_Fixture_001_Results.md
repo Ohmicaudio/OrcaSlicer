@@ -83,9 +83,9 @@ The fixture was generated successfully and contains all four tool-class regions:
 
 The fixture also includes holes, boss/counterbore-like features, a sloped cosmetic panel, visible detail features, and hidden backside/internal mass.
 
-## Optional Per-Tool Slice Probe
+## Original Per-Tool Slice Probe
 
-The optional probe sliced the same full fixture as separate single-tool jobs. This is not a mixed-nozzle print and not a region-assigned toolpath. It only checks whether representative U1 tool-class profiles can process the fixture in the local CLI path.
+The original optional probe sliced the same full fixture as separate single-tool jobs. This is not a mixed-nozzle print and not a region-assigned toolpath. It only checks whether representative U1 tool-class profiles can process the fixture in the local CLI path.
 
 | Probe | Machine/profile class | Result | Notes |
 | --- | --- | --- | --- |
@@ -104,13 +104,79 @@ Probe metrics for successful exports:
 
 These metrics are not a fair quality comparison because the entire fixture was sliced under each single tool class. They are useful only as a coarse capability probe and path-complexity signal.
 
+## Stacked CLI Fix Rerun - July 4, 2026
+
+The fixture was rerun with a local stacked CLI validation build that includes:
+
+```text
+validation/cli-profile-resolution-stacked-on-normalize-guard
+d5a1055f6 fix: resolve inherited process profiles in CLI
+5ace7ea28 fix: guard CLI FDM normalization without nozzle diameter
+```
+
+CLI executable:
+
+```text
+B:\ohmic\builds\Snapmaker-OrcaSlicer-cli-0p2-fix\msvc-release\src\Release\snapmaker-orca-console.exe
+```
+
+Ignored rerun outputs:
+
+```text
+outputs/amp_multitool_resolution_fixture/stacked_cli_rerun_2026-07-04/
+```
+
+Each case stores its exact argument vector in an ignored `command.json` file under its output directory. The command shape was:
+
+```powershell
+snapmaker-orca-console.exe --debug 1 --slice 0 --outputdir <case-output> --load-settings <machine-profile> --load-settings <process-profile> --load-filaments <filament-profile> <model>
+```
+
+Full-fixture single-tool rerun results:
+
+| Case | Process profile | Filament profile | Exit | G-code exported | G-code size |
+| --- | --- | --- | ---: | --- | ---: |
+| `full_fixture_u1_0p2_0p06` | `0.06 Standard @Snapmaker U1 (0.2 nozzle).json` | `Generic PLA @U1 0.2 nozzle.json` | 0 | Yes | 7,223,550 bytes |
+| `full_fixture_u1_0p4_0p20` | `0.20 Standard @Snapmaker U1 (0.4 nozzle).json` | `Snapmaker PLA Translucent @U1 0.4 nozzle.json` | 0 | Yes | 1,416,518 bytes |
+| `full_fixture_u1_0p6_0p24` | `0.24 Standard @Snapmaker U1 (0.6 nozzle).json` | `Generic PLA @U1 0.6 nozzle.json` | 0 | Yes | 917,310 bytes |
+| `full_fixture_u1_0p8_0p40` | `0.40 Standard @Snapmaker U1 (0.8 nozzle).json` | `Generic PLA @U1 0.8 nozzle.json` | 0 | Yes | 579,789 bytes |
+
+Intended isolated-probe rerun results:
+
+| Case | Intended class | Exit | G-code exported | G-code size |
+| --- | --- | ---: | --- | ---: |
+| `micro_detail_zone_only_u1_0p2_0p06` | 0.2 micro/fine detail | 0 | Yes | 404,677 bytes |
+| `simple_0p2_wall_ladder_u1_0p2_0p06` | 0.2 wall/detail ladder | 0 | Yes | 342,261 bytes |
+| `simple_0p2_gap_ladder_u1_0p2_0p06` | 0.2 gap/detail ladder | 0 | Yes | 572,000 bytes |
+| `normal_visible_detail_zone_only_u1_0p4_0p20` | 0.4 normal visible detail | 0 | Yes | 112,358 bytes |
+| `structural_shell_zone_only_u1_0p6_0p24` | 0.6 structural shell | 0 | Yes | 190,090 bytes |
+| `bulk_zone_only_u1_0p8_0p40` | 0.8 bulk | 0 | Yes | 117,766 bytes |
+
+Metrics summary from the rerun:
+
+| Case | Layers | Extrusion moves | Travel moves | Positive E |
+| --- | ---: | ---: | ---: | ---: |
+| `full_fixture_u1_0p2_0p06` | 206 | 156 | 229,272 | 206.198 |
+| `full_fixture_u1_0p4_0p20` | 62 | 3,393 | 38,780 | 7,602.702 |
+| `full_fixture_u1_0p6_0p24` | 51 | 4,134 | 22,320 | 12,003.982 |
+| `full_fixture_u1_0p8_0p40` | 31 | 3,356 | 13,767 | 15,314.416 |
+| `micro_detail_zone_only_u1_0p2_0p06` | 29 | 1 | 10,891 | 15.000 |
+| `simple_0p2_wall_ladder_u1_0p2_0p06` | 22 | 1 | 9,321 | 15.000 |
+| `simple_0p2_gap_ladder_u1_0p2_0p06` | 26 | 1 | 14,586 | 15.000 |
+| `normal_visible_detail_zone_only_u1_0p4_0p20` | 11 | 266 | 1,852 | 335.501 |
+| `structural_shell_zone_only_u1_0p6_0p24` | 25 | 633 | 3,670 | 1,142.681 |
+| `bulk_zone_only_u1_0p8_0p40` | 30 | 798 | 1,420 | 2,380.671 |
+
+The 0.2 tool-class path is no longer blocked by inherited profile resolution in this stacked build. The 0.2 exports should still be treated as planning probes, not quality evidence. The low extrusion-move counts and high travel-move counts in the 0.2 isolated probes need preview inspection before they are used as a design signal.
+
 ## What This Proves
 
 - The profile-backed U1 resolution ladder can be extracted into a planner-readable matrix.
 - The project now has a four-region fixture with explicit intended 0.2 / 0.4 / 0.6 / 0.8 assignments.
 - The fixture sidecar can carry region-level metadata before any slicer integration exists.
-- The local CLI can slice the full fixture with 0.4, 0.6, and 0.8 U1 profile classes.
-- The local 0.2 full-fixture probe is blocked by line-width validation and should be investigated separately if needed.
+- The local stacked CLI validation build can slice the full fixture with 0.2, 0.4, 0.6, and 0.8 U1 profile classes.
+- The 0.2 full-fixture and isolated-probe paths are unblocked when the normalize guard and inherited process profile resolution fixes are both present.
+- The ladder is now viable for slicer/profile capability planning, but the 0.2 outputs still need preview and physical validation before any quality claim.
 
 ## What This Does Not Prove
 

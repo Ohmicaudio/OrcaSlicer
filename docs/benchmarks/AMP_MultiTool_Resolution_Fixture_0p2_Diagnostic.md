@@ -253,7 +253,7 @@ Future Rev B fixture work should still improve labeling:
 
 ## Diagnostic Conclusion
 
-Current conclusion:
+Original conclusion:
 
 ```text
 The local U1 0.2 failure is profile/config-path caused, not geometry-caused.
@@ -274,6 +274,72 @@ Recommended next fix path:
 2. Investigate whether the CLI path fully resolves inherited U1 0.2 process settings before `Print::validate`.
 3. Confirm whether the same U1 0.2 profiles slice a plain cube in the GUI.
 4. Do not redesign the AMP multi-tool fixture as the primary fix unless a working U1 0.2 slice path later reveals specific geometry limits.
+
+## Stacked CLI Fix Rerun - July 4, 2026
+
+The diagnostic was rerun with a local stacked CLI validation build:
+
+```text
+validation/cli-profile-resolution-stacked-on-normalize-guard
+d5a1055f6 fix: resolve inherited process profiles in CLI
+5ace7ea28 fix: guard CLI FDM normalization without nozzle diameter
+```
+
+CLI executable:
+
+```text
+B:\ohmic\builds\Snapmaker-OrcaSlicer-cli-0p2-fix\msvc-release\src\Release\snapmaker-orca-console.exe
+```
+
+Rerun output directory:
+
+```text
+outputs/amp_multitool_resolution_fixture/stacked_cli_rerun_2026-07-04/
+```
+
+The rerun used the same generated fixture/probe family, but loaded the 0.2 user-facing wrapper profile through the stacked CLI fixes:
+
+```text
+resources/profiles/Snapmaker/machine/Snapmaker U1 (0.2 nozzle).json
+resources/profiles/Snapmaker/process/0.06 Standard @Snapmaker U1 (0.2 nozzle).json
+resources/profiles/Snapmaker/filament/Generic PLA @U1 0.2 nozzle.json
+```
+
+0.2 rerun results:
+
+| Model | Exit | G-code exported | G-code size |
+| --- | ---: | --- | ---: |
+| `amp_multitool_resolution_fixture.stl` | 0 | Yes | 7,223,550 bytes |
+| `micro_detail_zone_only.stl` | 0 | Yes | 404,677 bytes |
+| `simple_0p2_wall_ladder.stl` | 0 | Yes | 342,261 bytes |
+| `simple_0p2_gap_ladder.stl` | 0 | Yes | 572,000 bytes |
+
+Cross-tool ladder rerun summary:
+
+| Tool class | Representative process | Intended probe | Result |
+| --- | --- | --- | --- |
+| 0.2 mm | `0.06 Standard @Snapmaker U1 (0.2 nozzle).json` | micro/detail, wall ladder, gap ladder | Passed |
+| 0.4 mm | `0.20 Standard @Snapmaker U1 (0.4 nozzle).json` | normal visible detail | Passed |
+| 0.6 mm | `0.24 Standard @Snapmaker U1 (0.6 nozzle).json` | structural shell | Passed |
+| 0.8 mm | `0.40 Standard @Snapmaker U1 (0.8 nozzle).json` | bulk | Passed |
+
+Updated conclusion:
+
+```text
+The 0.2 tool-class failure is unblocked by the stacked CLI profile fixes.
+```
+
+This does not mean the micro-detail geometry is print-quality validated. It only means the user-facing U1 0.2 profile family can now export G-code for the fixture/probe set in the local stacked CLI validation path.
+
+Remaining constraints:
+
+- Preview inspection is still needed for the 0.2 G-code because the metrics show unusually low extrusion-move counts and high travel-move counts in isolated 0.2 probes.
+- Physical validation is still required before claiming 0.2 detail quality, surface quality, strength, bonding, or dimensional accuracy.
+- The inherited profile resolution fix should remain sequenced after the normalize_fdm guard unless Snapmaker asks for a stacked review branch.
+- This does not implement mixed-nozzle slicing.
+- This does not validate physical mixed-nozzle behavior.
+- This does not bypass Snapmaker touchscreen nozzle validation.
+- This only verifies slicer/profile capability for tool-class planning.
 
 ## Non-Claims
 
