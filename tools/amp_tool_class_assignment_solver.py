@@ -39,6 +39,12 @@ class Region:
     material_risk: str = "normal"
     confidence_hint: Optional[str] = None
     source_note: str = ""
+    estimated_toolchange_cost_s: float = 60.0
+    minimum_time_savings_required_s: float = 60.0
+    minimum_region_area_for_toolchange_mm2: float = 200.0
+    minimum_path_length_for_toolchange_mm: float = 500.0
+    current_tool_class: Optional[str] = "0.4"
+    single_nozzle_mode: bool = False
 
 
 @dataclass
@@ -51,6 +57,10 @@ class Assignment:
     reason: str
     risk_flags: List[str] = field(default_factory=list)
     confidence: float = 0.0
+    cost_gate_passed: bool = True
+    estimated_toolchange_cost_s: float = 0.0
+    cost_gate_reason: str = ""
+    fallback_reason: str = ""
 
 
 def example_regions() -> List[Region]:
@@ -138,6 +148,74 @@ def example_regions() -> List[Region]:
             estimated_path_length_mm=1900.0,
             confidence_hint="low",
         ),
+        Region(
+            region_name="tiny_micro_detail_not_worth_toolchange",
+            visibility="visible",
+            detail_criticality="micro",
+            wall_or_bulk="thin_wall",
+            min_feature_size_mm=0.35,
+            target_layer_height_mm=0.06,
+            estimated_region_area_mm2=45.0,
+            estimated_path_length_mm=120.0,
+            current_tool_class="0.4",
+        ),
+        Region(
+            region_name="large_micro_detail_panel_worth_0p2",
+            visibility="visible",
+            detail_criticality="micro",
+            wall_or_bulk="thin_wall",
+            min_feature_size_mm=0.40,
+            target_layer_height_mm=0.06,
+            estimated_region_area_mm2=1200.0,
+            estimated_path_length_mm=2600.0,
+            current_tool_class="0.4",
+        ),
+        Region(
+            region_name="small_bulk_region_not_worth_0p8",
+            visibility="hidden",
+            detail_criticality="none",
+            wall_or_bulk="bulk",
+            min_feature_size_mm=4.0,
+            target_layer_height_mm=0.40,
+            estimated_region_area_mm2=180.0,
+            estimated_path_length_mm=300.0,
+            current_tool_class="0.4",
+        ),
+        Region(
+            region_name="large_hidden_bulk_worth_0p8",
+            visibility="hidden",
+            detail_criticality="none",
+            wall_or_bulk="bulk",
+            min_feature_size_mm=6.0,
+            target_layer_height_mm=0.40,
+            estimated_region_area_mm2=8000.0,
+            estimated_path_length_mm=7000.0,
+            current_tool_class="0.4",
+        ),
+        Region(
+            region_name="current_tool_0p4_no_toolchange_fallback",
+            visibility="hidden",
+            detail_criticality="none",
+            wall_or_bulk="bulk",
+            min_feature_size_mm=6.0,
+            target_layer_height_mm=0.40,
+            estimated_region_area_mm2=8000.0,
+            estimated_path_length_mm=7000.0,
+            toolchange_allowed=False,
+            current_tool_class="0.4",
+        ),
+        Region(
+            region_name="clog_risk_micro_detail_fallback_0p4",
+            visibility="visible",
+            detail_criticality="micro",
+            wall_or_bulk="thin_wall",
+            min_feature_size_mm=0.40,
+            target_layer_height_mm=0.06,
+            estimated_region_area_mm2=1400.0,
+            estimated_path_length_mm=2400.0,
+            material_risk="clog_risk",
+            current_tool_class="0.4",
+        ),
     ]
 
 
@@ -165,10 +243,11 @@ def normalize_generated_region(raw: Dict[str, object]) -> Region:
             visibility="visible",
             detail_criticality="micro",
             wall_or_bulk="thin_wall",
-            min_feature_size_mm=0.30,
+            min_feature_size_mm=0.35,
             target_layer_height_mm=0.06,
             estimated_region_area_mm2=250.0,
             estimated_path_length_mm=900.0,
+            current_tool_class="0.4",
             source_note=str(raw.get("reason", "")),
         )
     if intended == "0.4":
@@ -181,6 +260,7 @@ def normalize_generated_region(raw: Dict[str, object]) -> Region:
             target_layer_height_mm=0.16,
             estimated_region_area_mm2=900.0,
             estimated_path_length_mm=1500.0,
+            current_tool_class="0.4",
             source_note=str(raw.get("reason", "")),
         )
     if intended == "0.6":
@@ -193,6 +273,7 @@ def normalize_generated_region(raw: Dict[str, object]) -> Region:
             target_layer_height_mm=0.24,
             estimated_region_area_mm2=2400.0,
             estimated_path_length_mm=2300.0,
+            current_tool_class="0.4",
             source_note=str(raw.get("reason", "")),
         )
     return Region(
@@ -204,6 +285,7 @@ def normalize_generated_region(raw: Dict[str, object]) -> Region:
         target_layer_height_mm=0.40,
         estimated_region_area_mm2=6500.0,
         estimated_path_length_mm=5200.0,
+        current_tool_class="0.4",
         source_note=str(raw.get("reason", "")),
     )
 
@@ -223,6 +305,12 @@ def region_from_dict(raw: Dict[str, object]) -> Region:
         toolchange_allowed=as_bool(raw.get("toolchange_allowed"), True),
         material_risk=str(raw.get("material_risk", "normal")),
         confidence_hint=str(raw["confidence_hint"]) if raw.get("confidence_hint") is not None else None,
+        estimated_toolchange_cost_s=as_float(raw.get("estimated_toolchange_cost_s"), 60.0),
+        minimum_time_savings_required_s=as_float(raw.get("minimum_time_savings_required_s"), 60.0),
+        minimum_region_area_for_toolchange_mm2=as_float(raw.get("minimum_region_area_for_toolchange_mm2"), 200.0),
+        minimum_path_length_for_toolchange_mm=as_float(raw.get("minimum_path_length_for_toolchange_mm"), 500.0),
+        current_tool_class=str(raw["current_tool_class"]) if raw.get("current_tool_class") is not None else None,
+        single_nozzle_mode=as_bool(raw.get("single_nozzle_mode"), False),
     )
 
 
@@ -249,88 +337,147 @@ def confidence_for(region: Region, tool_class: str, risks: List[str], base: floa
     return base
 
 
+def cost_gate(region: Region, tool_class: str, fallback_tool: str, risks: List[str]) -> tuple[str, bool, str, str]:
+    current = region.current_tool_class
+    if tool_class in {"reject", "single_nozzle_fallback"}:
+        return tool_class, False, "No toolchange cost gate applies to reject/single-nozzle fallback.", ""
+    if current is None:
+        return tool_class, True, "No current tool class was provided; advisory assignment is allowed.", ""
+    if tool_class == current:
+        return tool_class, True, f"Recommended tool already matches current tool {current}; no toolchange is needed.", ""
+
+    area_ok = region.estimated_region_area_mm2 >= region.minimum_region_area_for_toolchange_mm2
+    path_ok = region.estimated_path_length_mm >= region.minimum_path_length_for_toolchange_mm
+    if area_ok and path_ok:
+        return (
+            tool_class,
+            True,
+            (
+                f"Toolchange from {current} to {tool_class} passes region-size gate "
+                f"(area {region.estimated_region_area_mm2:.1f} >= {region.minimum_region_area_for_toolchange_mm2:.1f} mm^2, "
+                f"path {region.estimated_path_length_mm:.1f} >= {region.minimum_path_length_for_toolchange_mm:.1f} mm). "
+                f"Estimated toolchange cost is {region.estimated_toolchange_cost_s:.1f}s; "
+                f"minimum required savings is {region.minimum_time_savings_required_s:.1f}s."
+            ),
+            "",
+        )
+
+    risks.append("cost_gate_failed")
+    fallback = current or fallback_tool or "0.4"
+    return (
+        fallback,
+        False,
+        (
+            f"Toolchange from {current} to {tool_class} failed region-size gate "
+            f"(area {region.estimated_region_area_mm2:.1f}/{region.minimum_region_area_for_toolchange_mm2:.1f} mm^2, "
+            f"path {region.estimated_path_length_mm:.1f}/{region.minimum_path_length_for_toolchange_mm:.1f} mm)."
+        ),
+        f"Falling back to {fallback} because the region is too small to justify the toolchange cost.",
+    )
+
+
+def finalize_assignment(
+    region: Region,
+    tool_class: str,
+    fallback_tool: str,
+    reason: str,
+    risks: List[str],
+    base_confidence: float,
+) -> Assignment:
+    final_tool, gate_passed, gate_reason, fallback_reason = cost_gate(region, tool_class, fallback_tool, risks)
+    info = class_info(final_tool)
+    if final_tool != tool_class:
+        reason = f"{reason} {fallback_reason}".strip()
+    confidence = confidence_for(region, final_tool, risks, base_confidence)
+    return Assignment(
+        region_name=region.region_name,
+        recommended_tool_class=final_tool,
+        recommended_layer_height_class=info["layer"],
+        recommended_line_width_class=info["width"],
+        fallback_tool_class=fallback_tool,
+        reason=reason,
+        risk_flags=risks,
+        confidence=confidence,
+        cost_gate_passed=gate_passed,
+        estimated_toolchange_cost_s=region.estimated_toolchange_cost_s,
+        cost_gate_reason=gate_reason,
+        fallback_reason=fallback_reason,
+    )
+
+
 def assign(region: Region) -> Assignment:
     risks: List[str] = [TOUCHSCREEN_WARNING]
     reason_parts: List[str] = []
 
-    if not region.toolchange_allowed:
+    if region.single_nozzle_mode or not region.toolchange_allowed:
         risks.append("toolchange_disabled")
         reason = "Tool changes are disabled, so AMP keeps advisory stock/single-tool behavior."
         confidence = confidence_for(region, "single_nozzle_fallback", risks, 0.70)
-        return Assignment(region.region_name, "single_nozzle_fallback", "stock", "stock", "0.4", reason, risks, confidence)
+        return Assignment(
+            region.region_name,
+            "single_nozzle_fallback",
+            "stock",
+            "stock",
+            region.current_tool_class or "0.4",
+            reason,
+            risks,
+            confidence,
+            False,
+            region.estimated_toolchange_cost_s,
+            "Single-nozzle mode or toolchange-disabled input bypasses multi-tool cost gating.",
+            f"Falling back to {region.current_tool_class or '0.4'} stock/single-tool behavior.",
+        )
 
     if region.confidence_hint == "low":
         reason = "Region confidence is low; fall back to the general visible/detail class."
-        confidence = confidence_for(region, "0.4", risks, 0.55)
-        info = class_info("0.4")
-        return Assignment(region.region_name, "0.4", info["layer"], info["width"], "0.4", reason, risks, confidence)
+        return finalize_assignment(region, "0.4", "0.4", reason, risks, 0.55)
 
     risk_material = region.material_risk in {"clog_risk", "flexible", "abrasive"}
     visible = region.visibility == "visible"
     detail = region.detail_criticality
 
     if detail == "micro" and visible:
-        if not risk_material and region.min_feature_size_mm >= 0.22:
+        if not risk_material and region.min_feature_size_mm >= 0.35:
+            risks.append("high_cost_detail_tool")
             risks.append("preview_required")
             reason_parts.append("Visible micro detail is plausible for the 0.2 fine/detail class.")
-            info = class_info("0.2")
-            confidence = confidence_for(region, "0.2", risks, 0.72)
-            return Assignment(region.region_name, "0.2", info["layer"], info["width"], "0.4", " ".join(reason_parts), risks, confidence)
+            return finalize_assignment(region, "0.2", "0.4", " ".join(reason_parts), risks, 0.72)
         if risk_material:
             risks.append(f"material_{region.material_risk}")
             reason_parts.append("0.2 is rejected for this material risk; use 0.4 as the safer visible-detail fallback.")
         else:
-            risks.append("micro_feature_below_nominal_0p2_width")
-            reason_parts.append("Feature size is below the nominal 0.2 line-width boundary; use 0.4 fallback unless validated.")
-        info = class_info("0.4")
-        confidence = confidence_for(region, "0.4", risks, 0.65)
-        return Assignment(region.region_name, "0.4", info["layer"], info["width"], "0.4", " ".join(reason_parts), risks, confidence)
+            risks.append("micro_feature_below_documented_sliceable_bound")
+            reason_parts.append("Feature size is below the documented 0.35 mm 0.2-proxy sliceable lower bound; use 0.4 fallback unless validated.")
+        return finalize_assignment(region, "0.4", "0.4", " ".join(reason_parts), risks, 0.65)
 
     if region.wall_or_bulk == "thin_wall":
         if region.min_feature_size_mm < 0.70:
             risks.append("reject_large_tool_for_thin_wall")
-            info = class_info("0.4")
-            confidence = confidence_for(region, "0.4", risks, 0.62)
-            return Assignment(region.region_name, "0.4", info["layer"], info["width"], "0.2", "Thin wall is too small for 0.6/0.8; use finer fallback.", risks, confidence)
-        info = class_info("0.4")
-        confidence = confidence_for(region, "0.4", risks, 0.70)
-        return Assignment(region.region_name, "0.4", info["layer"], info["width"], "0.4", "Thin wall remains on the general class until validated.", risks, confidence)
+            return finalize_assignment(region, "0.4", "0.2", "Thin wall is too small for 0.6/0.8; use finer fallback.", risks, 0.62)
+        return finalize_assignment(region, "0.4", "0.4", "Thin wall remains on the general class until validated.", risks, 0.70)
 
     if visible or detail in {"medium", "high"}:
         if region.wall_or_bulk == "structural_shell" and region.min_feature_size_mm >= 2.0 and detail in {"none", "low"}:
-            info = class_info("0.6")
-            confidence = confidence_for(region, "0.6", risks, 0.68)
-            return Assignment(region.region_name, "0.6", info["layer"], info["width"], "0.4", "Visible risk is low and shell geometry is thick enough for 0.6.", risks, confidence)
+            return finalize_assignment(region, "0.6", "0.4", "Visible risk is low and shell geometry is thick enough for 0.6.", risks, 0.68)
         risks.append("avoid_large_visible_tool")
-        info = class_info("0.4")
-        confidence = confidence_for(region, "0.4", risks, 0.78)
-        return Assignment(region.region_name, "0.4", info["layer"], info["width"], "0.2", "Normal visible/detail geometry should use the 0.4 general class and avoid 0.8.", risks, confidence)
+        return finalize_assignment(region, "0.4", "0.2", "Normal visible/detail geometry should use the 0.4 general class and avoid 0.8.", risks, 0.78)
 
     if region.wall_or_bulk == "structural_shell":
         if region.min_feature_size_mm < 1.8:
             risks.append("thin_structural_shell")
-            info = class_info("0.4")
-            confidence = confidence_for(region, "0.4", risks, 0.62)
-            return Assignment(region.region_name, "0.4", info["layer"], info["width"], "0.4", "Structural shell is too thin or too visible for 0.6.", risks, confidence)
-        info = class_info("0.6")
-        confidence = confidence_for(region, "0.6", risks, 0.82)
-        return Assignment(region.region_name, "0.6", info["layer"], info["width"], "0.4", "Internal/low-detail structural shell is a 0.6 candidate.", risks, confidence)
+            return finalize_assignment(region, "0.4", "0.4", "Structural shell is too thin or too visible for 0.6.", risks, 0.62)
+        return finalize_assignment(region, "0.6", "0.4", "Internal/low-detail structural shell is a 0.6 candidate.", risks, 0.82)
 
     if region.wall_or_bulk == "bulk" or region.visibility == "hidden":
         large_enough = region.estimated_region_area_mm2 >= 3000.0 or region.estimated_path_length_mm >= 3000.0
         if large_enough and region.min_feature_size_mm >= 3.0:
-            info = class_info("0.8")
-            confidence = confidence_for(region, "0.8", risks, 0.84)
-            return Assignment(region.region_name, "0.8", info["layer"], info["width"], "0.6", "Hidden/internal bulk is large enough for the 0.8 bulk class.", risks, confidence)
+            risks.append("bulk_tool_cost_gate")
+            return finalize_assignment(region, "0.8", "0.6", "Hidden/internal bulk is large enough for the 0.8 bulk class.", risks, 0.84)
         risks.append("medium_bulk")
-        info = class_info("0.6")
-        confidence = confidence_for(region, "0.6", risks, 0.72)
-        return Assignment(region.region_name, "0.6", info["layer"], info["width"], "0.4", "Bulk is not large enough for 0.8; use 0.6 medium bulk fallback.", risks, confidence)
+        return finalize_assignment(region, "0.6", "0.4", "Bulk is not large enough for 0.8; use 0.6 medium bulk fallback.", risks, 0.72)
 
-    info = class_info("0.4")
     risks.append("unmatched_rule")
-    confidence = confidence_for(region, "0.4", risks, 0.50)
-    return Assignment(region.region_name, "0.4", info["layer"], info["width"], "0.4", "No stronger rule matched; use the general 0.4 fallback.", risks, confidence)
+    return finalize_assignment(region, "0.4", "0.4", "No stronger rule matched; use the general 0.4 fallback.", risks, 0.50)
 
 
 def assignments_for(regions: Iterable[Region]) -> List[Assignment]:
@@ -344,6 +491,10 @@ def assignment_row(assignment: Assignment) -> Dict[str, object]:
         "recommended_layer_height_class": assignment.recommended_layer_height_class,
         "recommended_line_width_class": assignment.recommended_line_width_class,
         "fallback_tool_class": assignment.fallback_tool_class,
+        "cost_gate_passed": str(assignment.cost_gate_passed).lower(),
+        "estimated_toolchange_cost_s": f"{assignment.estimated_toolchange_cost_s:.1f}",
+        "cost_gate_reason": assignment.cost_gate_reason,
+        "fallback_reason": assignment.fallback_reason,
         "reason": assignment.reason,
         "risk_flags": "; ".join(assignment.risk_flags),
         "confidence": f"{assignment.confidence:.2f}",
@@ -362,15 +513,16 @@ def write_csv(assignments: List[Assignment], path: Path) -> None:
 
 def markdown(assignments: List[Assignment]) -> str:
     lines = [
-        "| Region | Tool | Layer class | Width class | Fallback | Confidence | Risk flags | Reason |",
-        "| --- | --- | --- | --- | --- | ---: | --- | --- |",
+        "| Region | Tool | Layer class | Width class | Fallback | Cost gate | Cost reason | Confidence | Risk flags | Reason |",
+        "| --- | --- | --- | --- | --- | --- | --- | ---: | --- | --- |",
     ]
     for item in assignments:
         row = assignment_row(item)
         lines.append(
             f"| `{row['region_name']}` | `{row['recommended_tool_class']}` | "
             f"`{row['recommended_layer_height_class']}` | `{row['recommended_line_width_class']}` | "
-            f"`{row['fallback_tool_class']}` | {row['confidence']} | {row['risk_flags']} | {row['reason']} |"
+            f"`{row['fallback_tool_class']}` | {row['cost_gate_passed']} | {row['cost_gate_reason']} | "
+            f"{row['confidence']} | {row['risk_flags']} | {row['reason']} |"
         )
     return "\n".join(lines) + "\n"
 
