@@ -1,0 +1,151 @@
+{
+  "schema_version": "0.1",
+  "purpose": "AMP firmware/controller execution adapter examples for comments-only pseudo emission.",
+  "adapters": [
+    {
+      "adapter_id": "snapmaker_touchscreen_blocked",
+      "adapter_name": "Snapmaker Touchscreen Blocked Advisory Adapter",
+      "target_controller": "Snapmaker U1 touchscreen",
+      "supports_toolchange_commands": false,
+      "supports_per_tool_offsets": false,
+      "supports_per_tool_heaters": false,
+      "supports_standby_temperature": false,
+      "supports_tool_parking": false,
+      "supports_state_save_restore": false,
+      "supports_purge_wipe_macros": false,
+      "supports_nozzle_metadata": false,
+      "touchscreen_safe": false,
+      "fluidd_only": false,
+      "requires_hardware_validation": true,
+      "command_style": "blocked",
+      "tool_map": {
+        "0.2": { "tool_id": "T0", "nozzle_diameter_mm": 0.2 },
+        "0.4": { "tool_id": "T1", "nozzle_diameter_mm": 0.4 },
+        "0.6": { "tool_id": "T2", "nozzle_diameter_mm": 0.6 },
+        "0.8": { "tool_id": "T3", "nozzle_diameter_mm": 0.8 }
+      },
+      "safety_warnings": [
+        "Touchscreen-started mixed physical nozzle execution remains blocked.",
+        "Use this adapter for advisory schedule review only."
+      ]
+    },
+    {
+      "adapter_id": "snapmaker_fluidd_klipper_experimental",
+      "adapter_name": "Snapmaker Fluidd Klipper Experimental Adapter",
+      "target_controller": "Snapmaker U1 Fluidd/Klipper path",
+      "supports_toolchange_commands": true,
+      "supports_per_tool_offsets": true,
+      "supports_per_tool_heaters": "unknown",
+      "supports_standby_temperature": "unknown",
+      "supports_tool_parking": "future_macro",
+      "supports_state_save_restore": true,
+      "supports_purge_wipe_macros": "future_macro",
+      "supports_nozzle_metadata": false,
+      "touchscreen_safe": false,
+      "fluidd_only": true,
+      "requires_hardware_validation": true,
+      "command_style": "snapmaker_fluidd_klipper",
+      "state_save_command": "SAVE_GCODE_STATE NAME=amp_toolchange",
+      "state_restore_command": "RESTORE_GCODE_STATE NAME=amp_toolchange",
+      "purge_wipe_macro": "AMP_PURGE_OR_WIPE",
+      "tool_map": {
+        "0.2": { "tool_id": "T0", "nozzle_diameter_mm": 0.2, "macro_name": "AMP_PICK_TOOL", "offset": { "x": "hardware_required", "y": "hardware_required", "z": "hardware_required" } },
+        "0.4": { "tool_id": "T1", "nozzle_diameter_mm": 0.4, "macro_name": "AMP_PICK_TOOL", "offset": { "x": "hardware_required", "y": "hardware_required", "z": "hardware_required" } },
+        "0.6": { "tool_id": "T2", "nozzle_diameter_mm": 0.6, "macro_name": "AMP_PICK_TOOL", "offset": { "x": "hardware_required", "y": "hardware_required", "z": "hardware_required" } },
+        "0.8": { "tool_id": "T3", "nozzle_diameter_mm": 0.8, "macro_name": "AMP_PICK_TOOL", "offset": { "x": "hardware_required", "y": "hardware_required", "z": "hardware_required" } }
+      },
+      "safety_warnings": [
+        "Developer-only future path.",
+        "Requires U1 hardware validation before executable commands are considered.",
+        "Do not use for touchscreen-started mixed physical nozzle jobs."
+      ]
+    },
+    {
+      "adapter_id": "generic_klipper_macro",
+      "adapter_name": "Generic Klipper Macro Adapter",
+      "target_controller": "Generic Klipper with user-defined macros",
+      "supports_toolchange_commands": true,
+      "supports_per_tool_offsets": true,
+      "supports_per_tool_heaters": "macro_dependent",
+      "supports_standby_temperature": "macro_dependent",
+      "supports_tool_parking": "macro_dependent",
+      "supports_state_save_restore": true,
+      "supports_purge_wipe_macros": "macro_dependent",
+      "supports_nozzle_metadata": false,
+      "touchscreen_safe": false,
+      "fluidd_only": false,
+      "requires_hardware_validation": true,
+      "command_style": "klipper_macro",
+      "state_save_command": "SAVE_GCODE_STATE NAME=amp_toolchange",
+      "state_restore_command": "RESTORE_GCODE_STATE NAME=amp_toolchange",
+      "purge_wipe_macro": "AMP_PURGE_OR_WIPE",
+      "tool_map": {
+        "0.2": { "tool_id": "T0", "nozzle_diameter_mm": 0.2, "macro_name": "AMP_PICK_TOOL", "offset": { "x": "configured_macro", "y": "configured_macro", "z": "configured_macro" } },
+        "0.4": { "tool_id": "T1", "nozzle_diameter_mm": 0.4, "macro_name": "AMP_PICK_TOOL", "offset": { "x": "configured_macro", "y": "configured_macro", "z": "configured_macro" } },
+        "0.6": { "tool_id": "T2", "nozzle_diameter_mm": 0.6, "macro_name": "AMP_PICK_TOOL", "offset": { "x": "configured_macro", "y": "configured_macro", "z": "configured_macro" } },
+        "0.8": { "tool_id": "T3", "nozzle_diameter_mm": 0.8, "macro_name": "AMP_PICK_TOOL", "offset": { "x": "configured_macro", "y": "configured_macro", "z": "configured_macro" } }
+      },
+      "safety_warnings": [
+        "Reference macro model only.",
+        "Actual macro names, offsets, parking, purge, and heater handling are printer-specific."
+      ]
+    },
+    {
+      "adapter_id": "klipper_ktcc_reference",
+      "adapter_name": "KTCC Reference Adapter",
+      "target_controller": "Klipper with KTCC-style tool objects",
+      "supports_toolchange_commands": true,
+      "supports_per_tool_offsets": true,
+      "supports_per_tool_heaters": true,
+      "supports_standby_temperature": true,
+      "supports_tool_parking": true,
+      "supports_state_save_restore": true,
+      "supports_purge_wipe_macros": true,
+      "supports_nozzle_metadata": "tool_config_dependent",
+      "touchscreen_safe": false,
+      "fluidd_only": false,
+      "requires_hardware_validation": true,
+      "command_style": "klipper_ktcc",
+      "parking_model": "ktcc_zone_and_park",
+      "heater_model": "active_standby_off",
+      "purge_wipe_macro": "KTCC_TOOLCHANGE_PURGE",
+      "tool_map": {
+        "0.2": { "tool_id": "T0", "nozzle_diameter_mm": 0.2, "ktcc_tool_name": "tool_0p2", "offset": { "x": "ktcc_tool_config", "y": "ktcc_tool_config", "z": "ktcc_tool_config" } },
+        "0.4": { "tool_id": "T1", "nozzle_diameter_mm": 0.4, "ktcc_tool_name": "tool_0p4", "offset": { "x": "ktcc_tool_config", "y": "ktcc_tool_config", "z": "ktcc_tool_config" } },
+        "0.6": { "tool_id": "T2", "nozzle_diameter_mm": 0.6, "ktcc_tool_name": "tool_0p6", "offset": { "x": "ktcc_tool_config", "y": "ktcc_tool_config", "z": "ktcc_tool_config" } },
+        "0.8": { "tool_id": "T3", "nozzle_diameter_mm": 0.8, "ktcc_tool_name": "tool_0p8", "offset": { "x": "ktcc_tool_config", "y": "ktcc_tool_config", "z": "ktcc_tool_config" } }
+      },
+      "safety_warnings": [
+        "Reference architecture only.",
+        "Requires a configured and validated KTCC printer before executable commands are considered."
+      ]
+    },
+    {
+      "adapter_id": "reprap_firmware_reference",
+      "adapter_name": "RepRapFirmware Reference Adapter",
+      "target_controller": "RepRapFirmware/Duet reference semantics",
+      "supports_toolchange_commands": true,
+      "supports_per_tool_offsets": true,
+      "supports_per_tool_heaters": true,
+      "supports_standby_temperature": true,
+      "supports_tool_parking": true,
+      "supports_state_save_restore": "macro_dependent",
+      "supports_purge_wipe_macros": "macro_dependent",
+      "supports_nozzle_metadata": "tool_definition_dependent",
+      "touchscreen_safe": false,
+      "fluidd_only": false,
+      "requires_hardware_validation": true,
+      "command_style": "reprap_firmware",
+      "tool_map": {
+        "0.2": { "tool_id": "T0", "nozzle_diameter_mm": 0.2, "rrf_tpre": "tpre0.g", "offset": { "x": "G10", "y": "G10", "z": "G10" } },
+        "0.4": { "tool_id": "T1", "nozzle_diameter_mm": 0.4, "rrf_tpre": "tpre1.g", "offset": { "x": "G10", "y": "G10", "z": "G10" } },
+        "0.6": { "tool_id": "T2", "nozzle_diameter_mm": 0.6, "rrf_tpre": "tpre2.g", "offset": { "x": "G10", "y": "G10", "z": "G10" } },
+        "0.8": { "tool_id": "T3", "nozzle_diameter_mm": 0.8, "rrf_tpre": "tpre3.g", "offset": { "x": "G10", "y": "G10", "z": "G10" } }
+      },
+      "safety_warnings": [
+        "Reference semantic model only.",
+        "Does not imply Snapmaker U1 compatibility."
+      ]
+    }
+  ]
+}
