@@ -2,8 +2,10 @@
 
 #include "libslic3r/AdaptiveManufacturingDebugArtifactSerializer.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <set>
 #include <sstream>
 
 using namespace Slic3r;
@@ -16,10 +18,25 @@ std::string read_text_fixture(const std::string &path)
     REQUIRE(file.good());
     std::ostringstream buffer;
     buffer << file.rdbuf();
-    std::string text = buffer.str();
-    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
-        text.pop_back();
-    return text;
+    return buffer.str();
+}
+
+std::string normalize_packet_json_for_exact_compare(std::string text)
+{
+    std::string normalized;
+    normalized.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\r') {
+            if (i + 1 < text.size() && text[i + 1] == '\n')
+                continue;
+            normalized.push_back('\n');
+        } else {
+            normalized.push_back(text[i]);
+        }
+    }
+    if (!normalized.empty() && normalized.back() == '\n')
+        normalized.pop_back();
+    return normalized;
 }
 
 AdaptiveManufacturingDebugEntry make_packet_entry(
@@ -203,6 +220,51 @@ std::vector<std::string> object_array_value(const std::string &json, const std::
     return objects;
 }
 
+std::set<std::string> top_level_object_keys(const std::string &json)
+{
+    REQUIRE(!json.empty());
+    REQUIRE(json.front() == '{');
+    std::set<std::string> keys;
+    bool in_string = false;
+    bool escaped = false;
+    int depth = 0;
+    for (std::size_t i = 0; i < json.size(); ++i) {
+        const char c = json[i];
+        if (in_string) {
+            if (escaped)
+                escaped = false;
+            else if (c == '\\')
+                escaped = true;
+            else if (c == '"')
+                in_string = false;
+            continue;
+        }
+        if (c == '"') {
+            if (depth == 1) {
+                const std::string key = parse_json_string_at(json, i);
+                std::size_t after = i + key.size() + 2;
+                while (after < json.size() && std::isspace(static_cast<unsigned char>(json[after])))
+                    ++after;
+                if (after < json.size() && json[after] == ':')
+                    keys.insert(key);
+            }
+            in_string = true;
+        } else if (c == '{' || c == '[') {
+            ++depth;
+        } else if (c == '}' || c == ']') {
+            --depth;
+        }
+    }
+    return keys;
+}
+
+void require_only_keys(const std::string &json, const std::set<std::string> &allowed_keys)
+{
+    const std::set<std::string> keys = top_level_object_keys(json);
+    for (const std::string &key : keys)
+        REQUIRE(allowed_keys.count(key) == 1);
+}
+
 AdaptiveManufacturingDebugGenerationMode generation_mode_from_json(const std::string &value)
 {
     if (value == "offline_advisory")
@@ -227,6 +289,30 @@ AdaptiveManufacturingDebugSourceStage source_stage_from_json(const std::string &
 
 AdaptiveManufacturingDebugEntry entry_from_json(const std::string &json)
 {
+    require_only_keys(json, {
+        "object_id",
+        "layer_id",
+        "region_id",
+        "plan_reason",
+        "confidence",
+        "toolchange_requested",
+        "bead_width_override_present",
+        "nozzle_override_present",
+        "source_stage",
+        "region_name",
+        "recommended_tool_class",
+        "fallback_tool_class",
+        "selected_process_profile",
+        "selected_layer_height_mm",
+        "selected_line_width_class",
+        "cost_gate_passed",
+        "cost_gate_reason",
+        "fallback_reason",
+        "risk_flags",
+        "local_z_future_required",
+        "touchscreen_mixed_nozzle_blocked",
+        "warnings",
+    });
     AdaptiveManufacturingDebugEntry entry;
     entry.object_id = int_value(json, "object_id");
     entry.layer_id = int_value(json, "layer_id");
@@ -265,10 +351,9 @@ AdaptiveManufacturingDebugEntry entry_from_json(const std::string &json)
     return entry;
 }
 
-AdaptiveManufacturingDebugArtifact import_debug_artifact_from_json_fixture(const std::string &path)
+AdaptiveManufacturingDebugArtifact import_debug_artifact_from_json_string(const std::string &json)
 {
-    const std::string json = read_text_fixture(path);
-
+    require_only_keys(json, {"schema_version", "generation_mode", "warnings", "entries"});
     AdaptiveManufacturingDebugArtifact artifact;
     artifact.schema_version = string_value(json, "schema_version");
     artifact.generation_mode = generation_mode_from_json(string_value(json, "generation_mode"));
@@ -279,6 +364,22 @@ AdaptiveManufacturingDebugArtifact import_debug_artifact_from_json_fixture(const
     for (const auto &entry_json : object_array_value(json, "entries"))
         artifact.add_entry(entry_from_json(entry_json));
     return artifact;
+}
+
+AdaptiveManufacturingDebugArtifact import_debug_artifact_from_json_fixture(const std::string &path)
+{
+    return import_debug_artifact_from_json_string(read_text_fixture(path));
+}
+
+const AdaptiveManufacturingDebugEntry *find_entry_by_region_name(
+    const AdaptiveManufacturingDebugArtifact &artifact,
+    const std::string &region_name)
+{
+    const auto &entries = artifact.entries();
+    const auto it = std::find_if(entries.begin(), entries.end(), [&region_name](const AdaptiveManufacturingDebugEntry &entry) {
+        return entry.region_name.has_value() && *entry.region_name == region_name;
+    });
+    return it == entries.end() ? nullptr : &*it;
 }
 
 } // namespace
@@ -481,6 +582,35 @@ TEST_CASE("Adaptive manufacturing debug artifact omits unset packet fields", "[A
     CHECK(json.find("touchscreen_mixed_nozzle_blocked") == std::string::npos);
 }
 
+TEST_CASE("Adaptive manufacturing debug artifact imported missing optionals remain omitted", "[AdaptiveManufacturingDebugArtifactSerializer]")
+{
+    const std::string fixture_json =
+        "{\"schema_version\":\"0.1\",\"generation_mode\":\"offline_advisory\",\"warnings\":[],\"entries\":["
+        "{\"object_id\":2,\"layer_id\":3,\"region_id\":4,\"plan_reason\":\"StockFallback\",\"confidence\":0,\"toolchange_requested\":false,"
+        "\"bead_width_override_present\":false,\"nozzle_override_present\":false,\"source_stage\":\"offline_plan_packet\"}"
+        "]}";
+
+    const AdaptiveManufacturingDebugArtifact artifact = import_debug_artifact_from_json_string(fixture_json);
+    REQUIRE(artifact.entries().size() == 1);
+    const auto &entry = artifact.entries().front();
+    CHECK_FALSE(entry.region_name.has_value());
+    CHECK_FALSE(entry.recommended_tool_class.has_value());
+    CHECK_FALSE(entry.selected_process_profile.has_value());
+    CHECK_FALSE(entry.cost_gate_passed.has_value());
+    CHECK_FALSE(entry.local_z_future_required.has_value());
+    CHECK(entry.risk_flags.empty());
+
+    const std::string json = serialize_adaptive_manufacturing_debug_artifact(artifact);
+    CHECK(json.find("\"region_name\"") == std::string::npos);
+    CHECK(json.find("\"recommended_tool_class\"") == std::string::npos);
+    CHECK(json.find("\"selected_process_profile\"") == std::string::npos);
+    CHECK(json.find("\"cost_gate_passed\"") == std::string::npos);
+    CHECK(json.find("\"local_z_future_required\"") == std::string::npos);
+    CHECK(json.find("\"risk_flags\"") == std::string::npos);
+    CHECK(json.find(":null") == std::string::npos);
+    CHECK(json.find(":\"\"") == std::string::npos);
+}
+
 TEST_CASE("Adaptive manufacturing debug artifact packet risk flags preserve order and escaping", "[AdaptiveManufacturingDebugArtifactSerializer]")
 {
     AdaptiveManufacturingDebugArtifact artifact;
@@ -559,7 +689,8 @@ TEST_CASE("Adaptive manufacturing debug artifact matches offline plan packet gol
         {"touchscreen_mixed_nozzle_blocked"}));
 
     const std::string json = serialize_adaptive_manufacturing_debug_artifact(artifact);
-    const std::string golden = read_text_fixture("tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json");
+    const std::string golden = normalize_packet_json_for_exact_compare(
+        read_text_fixture("tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json"));
 
     CHECK(json == golden);
     CHECK(serialize_adaptive_manufacturing_debug_artifact(artifact) == json);
@@ -579,14 +710,17 @@ TEST_CASE("Adaptive manufacturing debug artifact matches offline plan packet gol
 TEST_CASE("Adaptive manufacturing debug artifact golden packet imports and serializes deterministically", "[AdaptiveManufacturingDebugArtifactSerializer]")
 {
     const std::string fixture_path = "tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json";
-    const std::string golden = read_text_fixture(fixture_path);
+    const std::string golden = normalize_packet_json_for_exact_compare(read_text_fixture(fixture_path));
     const AdaptiveManufacturingDebugArtifact artifact = import_debug_artifact_from_json_fixture(fixture_path);
 
     REQUIRE(artifact.generation_mode == AdaptiveManufacturingDebugGenerationMode::OfflineAdvisory);
     REQUIRE(artifact.entries().size() == 4);
 
-    const auto &micro = artifact.entries()[0];
-    CHECK(micro.region_name == "micro_detail_zone");
+    const AdaptiveManufacturingDebugEntry *micro_entry = find_entry_by_region_name(artifact, "micro_detail_zone");
+    REQUIRE(micro_entry != nullptr);
+    const auto &micro = *micro_entry;
+    CHECK(micro.layer_id == 0);
+    CHECK(micro.region_id == 0);
     CHECK(micro.recommended_tool_class == "0.2");
     CHECK(micro.fallback_tool_class == "0.4");
     CHECK(micro.selected_process_profile == "0.06 Standard @Snapmaker U1 (0.2 nozzle)");
@@ -598,14 +732,20 @@ TEST_CASE("Adaptive manufacturing debug artifact golden packet imports and seria
     CHECK(micro.risk_flags[0] == "local_z_future_required");
     CHECK(micro.risk_flags[1] == "touchscreen_mixed_nozzle_blocked");
 
-    const auto &bulk = artifact.entries()[3];
-    CHECK(bulk.region_name == "bulk_zone");
+    const AdaptiveManufacturingDebugEntry *bulk_entry = find_entry_by_region_name(artifact, "bulk_zone");
+    REQUIRE(bulk_entry != nullptr);
+    const auto &bulk = *bulk_entry;
+    CHECK(bulk.layer_id == 3);
+    CHECK(bulk.region_id == 3);
     CHECK(bulk.recommended_tool_class == "0.8");
     CHECK(bulk.selected_process_profile == "0.40 Standard @Snapmaker U1 (0.8 nozzle)");
 
-    const std::string json = serialize_adaptive_manufacturing_debug_artifact(artifact);
-    CHECK(json == golden);
-    CHECK(serialize_adaptive_manufacturing_debug_artifact(artifact) == json);
-    CHECK(json.find("observation_summary") == std::string::npos);
-    CHECK(json.find("slicer_build_info") == std::string::npos);
+    const std::string json1 = serialize_adaptive_manufacturing_debug_artifact(artifact);
+    CHECK(json1 == golden);
+    CHECK(serialize_adaptive_manufacturing_debug_artifact(artifact) == json1);
+    const AdaptiveManufacturingDebugArtifact imported_again = import_debug_artifact_from_json_string(json1);
+    const std::string json2 = serialize_adaptive_manufacturing_debug_artifact(imported_again);
+    CHECK(json1 == json2);
+    CHECK(json1.find("observation_summary") == std::string::npos);
+    CHECK(json1.find("slicer_build_info") == std::string::npos);
 }
