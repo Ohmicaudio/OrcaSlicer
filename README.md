@@ -17,6 +17,15 @@ The current implementation is scaffold and read-only infrastructure only. It inc
 
 See `docs/AMP_Branch_Status.md` and `docs/submission/Snapmaker_Submission_Checklist.md` for the current project status and submission gate.
 
+## AMP Milestone 001
+
+The `u1-adaptive-nozzle-strategy` branch has reached a behavior-neutral AMP checkpoint: [Offline Multi-Tool Resolution Planner Contract](docs/milestones/AMP_Milestone_001_Offline_MultiTool_Planner.md).
+
+- Generates and validates an offline advisory plan packet for the U1 0.2 / 0.4 / 0.6 / 0.8 tool ladder.
+- Round-trips the debug artifact through C++ value types and a golden JSON contract.
+- Converts packet-shaped entries into deterministic packet sidecar lookup data.
+- Does not change production slicing, G-code output, profiles, or Snapmaker validation.
+
 
 # Download
 
