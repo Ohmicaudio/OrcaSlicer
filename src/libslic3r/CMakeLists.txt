@@ -33,6 +33,8 @@ set(lisbslic3r_sources
     AdaptiveManufacturingObservationDebugMapper.cpp
     AdaptiveManufacturingObservationDebugMapper.hpp
     AdaptiveManufacturingObservation.hpp
+    AdaptiveManufacturingPacketSidecar.cpp
+    AdaptiveManufacturingPacketSidecar.hpp
     AdaptiveManufacturingPlan.cpp
     AdaptiveManufacturingPlan.hpp
     AdaptiveManufacturingPlanner.cpp
