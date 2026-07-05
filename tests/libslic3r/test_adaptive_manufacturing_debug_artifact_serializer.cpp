@@ -2,6 +2,7 @@
 
 #include "libslic3r/AdaptiveManufacturingDebugArtifactSerializer.hpp"
 
+#include <cctype>
 #include <fstream>
 #include <sstream>
 
@@ -53,6 +54,231 @@ AdaptiveManufacturingDebugEntry make_packet_entry(
     entry.local_z_future_required = local_z_future_required;
     entry.touchscreen_mixed_nozzle_blocked = true;
     return entry;
+}
+
+std::size_t key_value_position(const std::string &json, const std::string &key)
+{
+    const std::string needle = "\"" + key + "\":";
+    const std::size_t key_pos = json.find(needle);
+    REQUIRE(key_pos != std::string::npos);
+    std::size_t value_pos = key_pos + needle.size();
+    while (value_pos < json.size() && std::isspace(static_cast<unsigned char>(json[value_pos])))
+        ++value_pos;
+    return value_pos;
+}
+
+std::string parse_json_string_at(const std::string &json, std::size_t pos)
+{
+    REQUIRE(pos < json.size());
+    REQUIRE(json[pos] == '"');
+    std::string value;
+    bool escaped = false;
+    for (std::size_t i = pos + 1; i < json.size(); ++i) {
+        const char c = json[i];
+        if (escaped) {
+            switch (c) {
+            case '"': value.push_back('"'); break;
+            case '\\': value.push_back('\\'); break;
+            case 'n': value.push_back('\n'); break;
+            case 'r': value.push_back('\r'); break;
+            case 't': value.push_back('\t'); break;
+            default: value.push_back(c); break;
+            }
+            escaped = false;
+        } else if (c == '\\') {
+            escaped = true;
+        } else if (c == '"') {
+            return value;
+        } else {
+            value.push_back(c);
+        }
+    }
+    FAIL("unterminated JSON string in test fixture");
+    return {};
+}
+
+std::string string_value(const std::string &json, const std::string &key)
+{
+    return parse_json_string_at(json, key_value_position(json, key));
+}
+
+bool contains_key(const std::string &json, const std::string &key)
+{
+    return json.find("\"" + key + "\":") != std::string::npos;
+}
+
+bool bool_value(const std::string &json, const std::string &key)
+{
+    const std::size_t pos = key_value_position(json, key);
+    if (json.compare(pos, 4, "true") == 0)
+        return true;
+    REQUIRE(json.compare(pos, 5, "false") == 0);
+    return false;
+}
+
+double double_value(const std::string &json, const std::string &key)
+{
+    const std::size_t pos = key_value_position(json, key);
+    return std::stod(json.substr(pos));
+}
+
+int int_value(const std::string &json, const std::string &key)
+{
+    const std::size_t pos = key_value_position(json, key);
+    return std::stoi(json.substr(pos));
+}
+
+std::size_t closing_delimiter(const std::string &json, std::size_t open_pos, char open, char close)
+{
+    REQUIRE(open_pos < json.size());
+    REQUIRE(json[open_pos] == open);
+    int depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+    for (std::size_t i = open_pos; i < json.size(); ++i) {
+        const char c = json[i];
+        if (in_string) {
+            if (escaped)
+                escaped = false;
+            else if (c == '\\')
+                escaped = true;
+            else if (c == '"')
+                in_string = false;
+            continue;
+        }
+        if (c == '"') {
+            in_string = true;
+        } else if (c == open) {
+            ++depth;
+        } else if (c == close) {
+            --depth;
+            if (depth == 0)
+                return i;
+        }
+    }
+    FAIL("unterminated JSON delimiter in test fixture");
+    return std::string::npos;
+}
+
+std::string array_value(const std::string &json, const std::string &key)
+{
+    const std::size_t open_pos = key_value_position(json, key);
+    const std::size_t close_pos = closing_delimiter(json, open_pos, '[', ']');
+    return json.substr(open_pos, close_pos - open_pos + 1);
+}
+
+std::vector<std::string> string_array_value(const std::string &json, const std::string &key)
+{
+    const std::string array = array_value(json, key);
+    std::vector<std::string> result;
+    for (std::size_t pos = 1; pos + 1 < array.size();) {
+        while (pos < array.size() && (std::isspace(static_cast<unsigned char>(array[pos])) || array[pos] == ','))
+            ++pos;
+        if (pos >= array.size() || array[pos] == ']')
+            break;
+        result.push_back(parse_json_string_at(array, pos));
+        pos = array.find('"', pos + 1);
+        while (pos != std::string::npos && array[pos - 1] == '\\')
+            pos = array.find('"', pos + 1);
+        REQUIRE(pos != std::string::npos);
+        ++pos;
+    }
+    return result;
+}
+
+std::vector<std::string> object_array_value(const std::string &json, const std::string &key)
+{
+    const std::string array = array_value(json, key);
+    std::vector<std::string> objects;
+    for (std::size_t pos = 1; pos + 1 < array.size();) {
+        while (pos < array.size() && (std::isspace(static_cast<unsigned char>(array[pos])) || array[pos] == ','))
+            ++pos;
+        if (pos >= array.size() || array[pos] == ']')
+            break;
+        REQUIRE(array[pos] == '{');
+        const std::size_t close_pos = closing_delimiter(array, pos, '{', '}');
+        objects.push_back(array.substr(pos, close_pos - pos + 1));
+        pos = close_pos + 1;
+    }
+    return objects;
+}
+
+AdaptiveManufacturingDebugGenerationMode generation_mode_from_json(const std::string &value)
+{
+    if (value == "offline_advisory")
+        return AdaptiveManufacturingDebugGenerationMode::OfflineAdvisory;
+    if (value == "enabled_readonly")
+        return AdaptiveManufacturingDebugGenerationMode::EnabledReadonly;
+    if (value == "enabled_noop")
+        return AdaptiveManufacturingDebugGenerationMode::EnabledNoop;
+    return AdaptiveManufacturingDebugGenerationMode::Disabled;
+}
+
+AdaptiveManufacturingDebugSourceStage source_stage_from_json(const std::string &value)
+{
+    if (value == "offline_plan_packet")
+        return AdaptiveManufacturingDebugSourceStage::OfflinePlanPacket;
+    if (value == "future_observation")
+        return AdaptiveManufacturingDebugSourceStage::FutureObservation;
+    if (value == "no_op_planner")
+        return AdaptiveManufacturingDebugSourceStage::NoOpPlanner;
+    return AdaptiveManufacturingDebugSourceStage::StockFallback;
+}
+
+AdaptiveManufacturingDebugEntry entry_from_json(const std::string &json)
+{
+    AdaptiveManufacturingDebugEntry entry;
+    entry.object_id = int_value(json, "object_id");
+    entry.layer_id = int_value(json, "layer_id");
+    entry.region_id = int_value(json, "region_id");
+    entry.confidence = double_value(json, "confidence");
+    entry.toolchange_requested = bool_value(json, "toolchange_requested");
+    entry.bead_width_override_present = bool_value(json, "bead_width_override_present");
+    entry.nozzle_override_present = bool_value(json, "nozzle_override_present");
+    entry.source_stage = source_stage_from_json(string_value(json, "source_stage"));
+    if (contains_key(json, "region_name"))
+        entry.region_name = string_value(json, "region_name");
+    if (contains_key(json, "recommended_tool_class"))
+        entry.recommended_tool_class = string_value(json, "recommended_tool_class");
+    if (contains_key(json, "fallback_tool_class"))
+        entry.fallback_tool_class = string_value(json, "fallback_tool_class");
+    if (contains_key(json, "selected_process_profile"))
+        entry.selected_process_profile = string_value(json, "selected_process_profile");
+    if (contains_key(json, "selected_layer_height_mm"))
+        entry.selected_layer_height_mm = double_value(json, "selected_layer_height_mm");
+    if (contains_key(json, "selected_line_width_class"))
+        entry.selected_line_width_class = string_value(json, "selected_line_width_class");
+    if (contains_key(json, "cost_gate_passed"))
+        entry.cost_gate_passed = bool_value(json, "cost_gate_passed");
+    if (contains_key(json, "cost_gate_reason"))
+        entry.cost_gate_reason = string_value(json, "cost_gate_reason");
+    if (contains_key(json, "fallback_reason"))
+        entry.fallback_reason = string_value(json, "fallback_reason");
+    if (contains_key(json, "risk_flags"))
+        entry.risk_flags = string_array_value(json, "risk_flags");
+    if (contains_key(json, "local_z_future_required"))
+        entry.local_z_future_required = bool_value(json, "local_z_future_required");
+    if (contains_key(json, "touchscreen_mixed_nozzle_blocked"))
+        entry.touchscreen_mixed_nozzle_blocked = bool_value(json, "touchscreen_mixed_nozzle_blocked");
+    if (contains_key(json, "warnings"))
+        entry.warnings = string_array_value(json, "warnings");
+    return entry;
+}
+
+AdaptiveManufacturingDebugArtifact import_debug_artifact_from_json_fixture(const std::string &path)
+{
+    const std::string json = read_text_fixture(path);
+
+    AdaptiveManufacturingDebugArtifact artifact;
+    artifact.schema_version = string_value(json, "schema_version");
+    artifact.generation_mode = generation_mode_from_json(string_value(json, "generation_mode"));
+    if (contains_key(json, "warnings")) {
+        for (const auto &warning : string_array_value(json, "warnings"))
+            artifact.add_warning(warning);
+    }
+    for (const auto &entry_json : object_array_value(json, "entries"))
+        artifact.add_entry(entry_from_json(entry_json));
+    return artifact;
 }
 
 } // namespace
@@ -348,4 +574,38 @@ TEST_CASE("Adaptive manufacturing debug artifact matches offline plan packet gol
     CHECK(json.find("\"risk_flags\":[\"local_z_future_required\",\"touchscreen_mixed_nozzle_blocked\"]") != std::string::npos);
     CHECK(json.find("\"local_z_future_required\":true") != std::string::npos);
     CHECK(json.find("\"touchscreen_mixed_nozzle_blocked\":true") != std::string::npos);
+}
+
+TEST_CASE("Adaptive manufacturing debug artifact golden packet imports and serializes deterministically", "[AdaptiveManufacturingDebugArtifactSerializer]")
+{
+    const std::string fixture_path = "tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json";
+    const std::string golden = read_text_fixture(fixture_path);
+    const AdaptiveManufacturingDebugArtifact artifact = import_debug_artifact_from_json_fixture(fixture_path);
+
+    REQUIRE(artifact.generation_mode == AdaptiveManufacturingDebugGenerationMode::OfflineAdvisory);
+    REQUIRE(artifact.entries().size() == 4);
+
+    const auto &micro = artifact.entries()[0];
+    CHECK(micro.region_name == "micro_detail_zone");
+    CHECK(micro.recommended_tool_class == "0.2");
+    CHECK(micro.fallback_tool_class == "0.4");
+    CHECK(micro.selected_process_profile == "0.06 Standard @Snapmaker U1 (0.2 nozzle)");
+    REQUIRE(micro.selected_layer_height_mm.has_value());
+    CHECK(*micro.selected_layer_height_mm == Approx(0.06));
+    CHECK(micro.local_z_future_required == true);
+    CHECK(micro.touchscreen_mixed_nozzle_blocked == true);
+    REQUIRE(micro.risk_flags.size() == 2);
+    CHECK(micro.risk_flags[0] == "local_z_future_required");
+    CHECK(micro.risk_flags[1] == "touchscreen_mixed_nozzle_blocked");
+
+    const auto &bulk = artifact.entries()[3];
+    CHECK(bulk.region_name == "bulk_zone");
+    CHECK(bulk.recommended_tool_class == "0.8");
+    CHECK(bulk.selected_process_profile == "0.40 Standard @Snapmaker U1 (0.8 nozzle)");
+
+    const std::string json = serialize_adaptive_manufacturing_debug_artifact(artifact);
+    CHECK(json == golden);
+    CHECK(serialize_adaptive_manufacturing_debug_artifact(artifact) == json);
+    CHECK(json.find("observation_summary") == std::string::npos);
+    CHECK(json.find("slicer_build_info") == std::string::npos);
 }

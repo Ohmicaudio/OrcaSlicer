@@ -118,7 +118,7 @@ New-Item -ItemType Directory -Force -Path ..\build-amp-focused | Out-Null
 Observed result:
 
 ```text
-All tests passed (205 assertions in 31 test cases)
+All tests passed (448 assertions in 32 test cases)
 ```
 
 New test coverage includes:
@@ -127,6 +127,7 @@ New test coverage includes:
 - packet-shaped tool/profile fields
 - four-region packet-shaped deterministic serialization
 - exact golden fixture match for the four-region offline plan packet shape
+- golden fixture import into C++ AMP value types and deterministic re-serialization
 - unset optional packet fields omitted from JSON
 - risk flag order and escaping
 
@@ -148,6 +149,34 @@ The golden fixture contains the four U1 tool-class advisory regions:
 - `bulk_zone`: recommended `0.8`, `0.40 Standard @Snapmaker U1 (0.8 nozzle)`
 
 The C++ serializer test constructs the same four-region `AdaptiveManufacturingDebugArtifact`, serializes it, and checks exact string equality against the golden fixture. The test also checks repeated serialization for deterministic output.
+
+## C++ Round-Trip Import Check
+
+The serializer test file now includes a test-only JSON import helper for the golden fixture:
+
+```text
+tests/libslic3r/test_adaptive_manufacturing_debug_artifact_serializer.cpp
+```
+
+The helper is a tiny fixture-scoped parser inside the test file. It only supports the committed golden fixture contract shape. It is not a production importer, is not wired into slicer execution, and is not used by `PrintObject`, `LayerRegion`, Arachne, Flow, G-code export, UI, profiles, or Snapmaker validation.
+
+Round-trip checked path:
+
+```text
+tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json
+-> C++ AdaptiveManufacturingDebugArtifact value types
+-> C++ serializer
+-> exact golden JSON
+```
+
+The round-trip test verifies:
+
+- `generation_mode` imports as `OfflineAdvisory`
+- all four entries import
+- `micro_detail_zone` preserves tool class, fallback tool, selected process profile, layer height, local-Z advisory, touchscreen block, and risk flags
+- `bulk_zone` preserves the `0.8` tool class and selected `0.8 nozzle` process profile
+- repeated serialization remains identical
+- unset optional fields remain omitted after serialization
 
 ## Packet Compatibility Result
 
@@ -226,6 +255,7 @@ The Python check compares generated packet artifacts to the golden contract sema
 - The Python packet generator now populates the full packet-compatible debug artifact field set.
 - The offline planner packet now has a stable golden debug-artifact contract.
 - Python-generated packet artifacts are checked against the same contract.
+- The golden debug artifact can round-trip through C++ value types without losing packet fields.
 - This artifact shape is suitable as a future sidecar/debug output target.
 
 ## What This Does Not Prove
