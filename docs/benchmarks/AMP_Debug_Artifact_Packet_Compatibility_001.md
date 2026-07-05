@@ -118,7 +118,7 @@ New-Item -ItemType Directory -Force -Path ..\build-amp-focused | Out-Null
 Observed result:
 
 ```text
-All tests passed (191 assertions in 30 test cases)
+All tests passed (205 assertions in 31 test cases)
 ```
 
 New test coverage includes:
@@ -126,8 +126,28 @@ New test coverage includes:
 - offline advisory generation mode serialization
 - packet-shaped tool/profile fields
 - four-region packet-shaped deterministic serialization
+- exact golden fixture match for the four-region offline plan packet shape
 - unset optional packet fields omitted from JSON
 - risk flag order and escaping
+
+## Golden Packet Fixture
+
+Committed golden fixture:
+
+```text
+tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json
+```
+
+The fixture is intentionally small and canonical. It is not a full generated packet dump and does not copy the full contents of `outputs/`.
+
+The golden fixture contains the four U1 tool-class advisory regions:
+
+- `micro_detail_zone`: recommended `0.2`, fallback `0.4`, `0.06 Standard @Snapmaker U1 (0.2 nozzle)`, local-Z advisory required
+- `normal_visible_detail_zone`: recommended `0.4`, `0.16 Optimal @Snapmaker U1 (0.4 nozzle)`
+- `structural_shell_zone`: recommended `0.6`, `0.24 Standard @Snapmaker U1 (0.6 nozzle)`
+- `bulk_zone`: recommended `0.8`, `0.40 Standard @Snapmaker U1 (0.8 nozzle)`
+
+The C++ serializer test constructs the same four-region `AdaptiveManufacturingDebugArtifact`, serializes it, and checks exact string equality against the golden fixture. The test also checks repeated serialization for deterministic output.
 
 ## Packet Compatibility Result
 
@@ -181,6 +201,22 @@ outputs/amp_plan_packet_001_detail_first/debug_artifact.json: passed, 0 errors, 
 
 The generated artifact now includes region/tool/profile/cost/risk/local-Z/touchscreen-block fields while remaining offline/advisory only.
 
+Golden compatibility check:
+
+```powershell
+python tools\amp_debug_artifact_contract_check.py outputs\amp_plan_packet_001\debug_artifact.json --golden tests\libslic3r\data\amp_debug_artifact_offline_plan_packet_golden.json
+python tools\amp_debug_artifact_contract_check.py outputs\amp_plan_packet_001_detail_first\debug_artifact.json --golden tests\libslic3r\data\amp_debug_artifact_offline_plan_packet_golden.json
+```
+
+Observed result:
+
+```text
+outputs/amp_plan_packet_001/debug_artifact.json: passed, 0 errors, 0 warnings
+outputs/amp_plan_packet_001_detail_first/debug_artifact.json: passed, 0 errors, 0 warnings
+```
+
+The Python check compares generated packet artifacts to the golden contract semantically. It requires the same region set and field shape, verifies `generation_mode`, requires `touchscreen_mixed_nozzle_blocked: true` for every region, and rejects forbidden production-claim fragments. It does not require byte-identical output because generated warnings and scheduling context may evolve.
+
 ## What This Proves
 
 - The offline AMP plan packet now has a C++ debug artifact representation.
@@ -188,6 +224,8 @@ The generated artifact now includes region/tool/profile/cost/risk/local-Z/touchs
 - Packet-shaped entries can carry tool class, fallback, process profile, layer height, line-width class, cost-gate, risk, local-Z, and touchscreen-block fields.
 - The current generated offline debug artifact is compatible with the supported C++ schema.
 - The Python packet generator now populates the full packet-compatible debug artifact field set.
+- The offline planner packet now has a stable golden debug-artifact contract.
+- Python-generated packet artifacts are checked against the same contract.
 - This artifact shape is suitable as a future sidecar/debug output target.
 
 ## What This Does Not Prove

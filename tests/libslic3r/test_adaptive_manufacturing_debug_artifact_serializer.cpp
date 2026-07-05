@@ -2,7 +2,60 @@
 
 #include "libslic3r/AdaptiveManufacturingDebugArtifactSerializer.hpp"
 
+#include <fstream>
+#include <sstream>
+
 using namespace Slic3r;
+
+namespace {
+
+std::string read_text_fixture(const std::string &path)
+{
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    std::string text = buffer.str();
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+        text.pop_back();
+    return text;
+}
+
+AdaptiveManufacturingDebugEntry make_packet_entry(
+    int layer_id,
+    int region_id,
+    const std::string &region_name,
+    const std::string &recommended_tool_class,
+    const std::string &fallback_tool_class,
+    const std::string &selected_process_profile,
+    double selected_layer_height_mm,
+    const std::string &selected_line_width_class,
+    const std::string &cost_gate_reason,
+    const std::string &fallback_reason,
+    bool local_z_future_required,
+    const std::vector<std::string> &risk_flags)
+{
+    AdaptiveManufacturingDebugEntry entry;
+    entry.object_id = 0;
+    entry.layer_id = layer_id;
+    entry.region_id = region_id;
+    entry.source_stage = AdaptiveManufacturingDebugSourceStage::OfflinePlanPacket;
+    entry.region_name = region_name;
+    entry.recommended_tool_class = recommended_tool_class;
+    entry.fallback_tool_class = fallback_tool_class;
+    entry.selected_process_profile = selected_process_profile;
+    entry.selected_layer_height_mm = selected_layer_height_mm;
+    entry.selected_line_width_class = selected_line_width_class;
+    entry.cost_gate_passed = true;
+    entry.cost_gate_reason = cost_gate_reason;
+    entry.fallback_reason = fallback_reason;
+    entry.risk_flags = risk_flags;
+    entry.local_z_future_required = local_z_future_required;
+    entry.touchscreen_mixed_nozzle_blocked = true;
+    return entry;
+}
+
+} // namespace
 
 TEST_CASE("Adaptive manufacturing debug artifact serializes empty artifact deterministically", "[AdaptiveManufacturingDebugArtifactSerializer]")
 {
@@ -215,4 +268,84 @@ TEST_CASE("Adaptive manufacturing debug artifact packet risk flags preserve orde
     const std::string json = serialize_adaptive_manufacturing_debug_artifact(artifact);
 
     CHECK(json.find("\"risk_flags\":[\"first \\\"quoted\\\"\",\"second\\\\path\"]") != std::string::npos);
+}
+
+TEST_CASE("Adaptive manufacturing debug artifact matches offline plan packet golden fixture", "[AdaptiveManufacturingDebugArtifactSerializer]")
+{
+    AdaptiveManufacturingDebugArtifact artifact;
+    artifact.generation_mode = AdaptiveManufacturingDebugGenerationMode::OfflineAdvisory;
+    artifact.add_warning("offline advisory golden contract");
+
+    artifact.add_entry(make_packet_entry(
+        3,
+        3,
+        "bulk_zone",
+        "0.8",
+        "0.6",
+        "0.40 Standard @Snapmaker U1 (0.8 nozzle)",
+        0.40,
+        "0.82-0.88",
+        "bulk region passes coarse tool class gate",
+        "fallback to 0.6 if bulk spacing is insufficient",
+        false,
+        {"touchscreen_mixed_nozzle_blocked"}));
+
+    artifact.add_entry(make_packet_entry(
+        1,
+        1,
+        "normal_visible_detail_zone",
+        "0.4",
+        "0.2",
+        "0.16 Optimal @Snapmaker U1 (0.4 nozzle)",
+        0.16,
+        "0.42-0.45",
+        "visible detail uses stock U1 0.4 detail profile",
+        "fallback to 0.2 if finer visible detail is required",
+        false,
+        {"touchscreen_mixed_nozzle_blocked"}));
+
+    artifact.add_entry(make_packet_entry(
+        0,
+        0,
+        "micro_detail_zone",
+        "0.2",
+        "0.4",
+        "0.06 Standard @Snapmaker U1 (0.2 nozzle)",
+        0.06,
+        "0.22",
+        "detail demand passes 0.2 tool class gate",
+        "fallback to 0.4 detail-capable tool class",
+        true,
+        {"local_z_future_required", "touchscreen_mixed_nozzle_blocked"}));
+
+    artifact.add_entry(make_packet_entry(
+        2,
+        2,
+        "structural_shell_zone",
+        "0.6",
+        "0.4",
+        "0.24 Standard @Snapmaker U1 (0.6 nozzle)",
+        0.24,
+        "0.62-0.66",
+        "structural shell can use wider tool class",
+        "fallback to 0.4 if shell feature spacing is too tight",
+        false,
+        {"touchscreen_mixed_nozzle_blocked"}));
+
+    const std::string json = serialize_adaptive_manufacturing_debug_artifact(artifact);
+    const std::string golden = read_text_fixture("tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json");
+
+    CHECK(json == golden);
+    CHECK(serialize_adaptive_manufacturing_debug_artifact(artifact) == json);
+    CHECK(json.find("\"generation_mode\":\"offline_advisory\"") != std::string::npos);
+    CHECK(json.find("\"recommended_tool_class\":\"0.2\"") != std::string::npos);
+    CHECK(json.find("\"recommended_tool_class\":\"0.4\"") != std::string::npos);
+    CHECK(json.find("\"recommended_tool_class\":\"0.6\"") != std::string::npos);
+    CHECK(json.find("\"recommended_tool_class\":\"0.8\"") != std::string::npos);
+    CHECK(json.find("\"selected_process_profile\":\"0.06 Standard @Snapmaker U1 (0.2 nozzle)\"") != std::string::npos);
+    CHECK(json.find("\"cost_gate_passed\":true") != std::string::npos);
+    CHECK(json.find("\"fallback_reason\":\"fallback to 0.4 detail-capable tool class\"") != std::string::npos);
+    CHECK(json.find("\"risk_flags\":[\"local_z_future_required\",\"touchscreen_mixed_nozzle_blocked\"]") != std::string::npos);
+    CHECK(json.find("\"local_z_future_required\":true") != std::string::npos);
+    CHECK(json.find("\"touchscreen_mixed_nozzle_blocked\":true") != std::string::npos);
 }

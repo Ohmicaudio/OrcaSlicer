@@ -60,9 +60,65 @@ PACKET_ENTRY_FIELDS = {
     "touchscreen_mixed_nozzle_blocked",
 }
 
+FORBIDDEN_CLAIM_FRAGMENTS = {
+    "mixed-nozzle" " works",
+    "bypass" " safety",
+    "factory" "-tested",
+    "production t0",
+    "production t1",
+    "production t2",
+    "production t3",
+}
 
-def check(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+
+def load_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def entries_by_region(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    entries = payload.get("entries", [])
+    if not isinstance(entries, list):
+        return {}
+    return {
+        str(entry.get("region_name")): entry
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("region_name") is not None
+    }
+
+
+def add_golden_errors(payload: dict[str, Any], golden: dict[str, Any], errors: list[str]) -> None:
+    golden_mode = golden.get("generation_mode")
+    if golden_mode is not None and payload.get("generation_mode") != golden_mode:
+        errors.append(
+            f"generation_mode {payload.get('generation_mode')!r} does not match golden {golden_mode!r}"
+        )
+
+    golden_regions = entries_by_region(golden)
+    payload_regions = entries_by_region(payload)
+    if set(payload_regions) != set(golden_regions):
+        errors.append(
+            "region_name set does not match golden: "
+            f"expected {sorted(golden_regions)}, got {sorted(payload_regions)}"
+        )
+
+    for region_name, golden_entry in sorted(golden_regions.items()):
+        payload_entry = payload_regions.get(region_name)
+        if payload_entry is None:
+            continue
+        missing_fields = sorted(set(golden_entry) - set(payload_entry))
+        if missing_fields:
+            errors.append(f"{region_name} missing golden fields: {', '.join(missing_fields)}")
+        if payload_entry.get("touchscreen_mixed_nozzle_blocked") is not True:
+            errors.append(f"{region_name} does not explicitly keep touchscreen mixed-nozzle blocked")
+
+    serialized = json.dumps(payload, sort_keys=True).lower()
+    found_claims = sorted(fragment for fragment in FORBIDDEN_CLAIM_FRAGMENTS if fragment in serialized)
+    if found_claims:
+        errors.append(f"forbidden production claim fragments found: {', '.join(found_claims)}")
+
+
+def check(path: Path, golden: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = load_json(path)
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -98,6 +154,9 @@ def check(path: Path) -> dict[str, Any]:
             + ", ".join(missing_packet_fields)
         )
 
+    if golden is not None and isinstance(payload, dict):
+        add_golden_errors(payload, golden, errors)
+
     return {
         "path": str(path).replace("\\", "/"),
         "passed": not errors,
@@ -113,9 +172,11 @@ def check(path: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="+", help="debug_artifact.json paths")
+    parser.add_argument("--golden", help="optional golden debug artifact contract fixture")
     args = parser.parse_args()
 
-    results = [check(Path(path)) for path in args.paths]
+    golden = load_json(Path(args.golden)) if args.golden else None
+    results = [check(Path(path), golden=golden) for path in args.paths]
     print(json.dumps({"results": results}, indent=2))
     return 0 if all(result["passed"] for result in results) else 2
 
