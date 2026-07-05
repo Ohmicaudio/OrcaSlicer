@@ -37,6 +37,7 @@ const char *to_json(AdaptiveManufacturingDebugGenerationMode mode)
     case AdaptiveManufacturingDebugGenerationMode::Disabled: return "disabled";
     case AdaptiveManufacturingDebugGenerationMode::EnabledNoop: return "enabled_noop";
     case AdaptiveManufacturingDebugGenerationMode::EnabledReadonly: return "enabled_readonly";
+    case AdaptiveManufacturingDebugGenerationMode::OfflineAdvisory: return "offline_advisory";
     }
     return "disabled";
 }
@@ -47,6 +48,7 @@ const char *to_json(AdaptiveManufacturingDebugSourceStage stage)
     case AdaptiveManufacturingDebugSourceStage::StockFallback: return "stock_fallback";
     case AdaptiveManufacturingDebugSourceStage::NoOpPlanner: return "no_op_planner";
     case AdaptiveManufacturingDebugSourceStage::FutureObservation: return "future_observation";
+    case AdaptiveManufacturingDebugSourceStage::OfflinePlanPacket: return "offline_plan_packet";
     }
     return "stock_fallback";
 }
@@ -70,6 +72,24 @@ void append_json_string_array(std::ostringstream &out, const std::vector<std::st
     out << "]";
 }
 
+void append_optional_json_string(std::ostringstream &out, const char *key, const std::optional<std::string> &value)
+{
+    if (value.has_value())
+        out << ",\"" << key << "\":\"" << json_escape(*value) << "\"";
+}
+
+void append_optional_json_double(std::ostringstream &out, const char *key, const std::optional<double> &value)
+{
+    if (value.has_value())
+        out << ",\"" << key << "\":" << *value;
+}
+
+void append_optional_json_bool(std::ostringstream &out, const char *key, const std::optional<bool> &value)
+{
+    if (value.has_value())
+        out << ",\"" << key << "\":" << (*value ? "true" : "false");
+}
+
 void append_entry(std::ostringstream &out, const AdaptiveManufacturingDebugEntry &entry)
 {
     out << "{";
@@ -82,6 +102,21 @@ void append_entry(std::ostringstream &out, const AdaptiveManufacturingDebugEntry
     out << ",\"bead_width_override_present\":" << (entry.bead_width_override_present ? "true" : "false");
     out << ",\"nozzle_override_present\":" << (entry.nozzle_override_present ? "true" : "false");
     out << ",\"source_stage\":\"" << to_json(entry.source_stage) << "\"";
+    append_optional_json_string(out, "region_name", entry.region_name);
+    append_optional_json_string(out, "recommended_tool_class", entry.recommended_tool_class);
+    append_optional_json_string(out, "fallback_tool_class", entry.fallback_tool_class);
+    append_optional_json_string(out, "selected_process_profile", entry.selected_process_profile);
+    append_optional_json_double(out, "selected_layer_height_mm", entry.selected_layer_height_mm);
+    append_optional_json_string(out, "selected_line_width_class", entry.selected_line_width_class);
+    append_optional_json_bool(out, "cost_gate_passed", entry.cost_gate_passed);
+    append_optional_json_string(out, "cost_gate_reason", entry.cost_gate_reason);
+    append_optional_json_string(out, "fallback_reason", entry.fallback_reason);
+    if (!entry.risk_flags.empty()) {
+        out << ",\"risk_flags\":";
+        append_json_string_array(out, entry.risk_flags);
+    }
+    append_optional_json_bool(out, "local_z_future_required", entry.local_z_future_required);
+    append_optional_json_bool(out, "touchscreen_mixed_nozzle_blocked", entry.touchscreen_mixed_nozzle_blocked);
     out << ",\"warnings\":";
     append_json_string_array(out, entry.warnings);
     out << "}";

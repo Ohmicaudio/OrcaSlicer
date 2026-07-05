@@ -13,13 +13,15 @@ namespace Slic3r {
 enum class AdaptiveManufacturingDebugSourceStage {
     StockFallback,
     NoOpPlanner,
-    FutureObservation
+    FutureObservation,
+    OfflinePlanPacket
 };
 
 enum class AdaptiveManufacturingDebugGenerationMode {
     Disabled,
     EnabledNoop,
-    EnabledReadonly
+    EnabledReadonly,
+    OfflineAdvisory
 };
 
 struct AdaptiveManufacturingDebugEntry
@@ -33,6 +35,18 @@ struct AdaptiveManufacturingDebugEntry
     bool bead_width_override_present = false;
     bool nozzle_override_present = false;
     AdaptiveManufacturingDebugSourceStage source_stage = AdaptiveManufacturingDebugSourceStage::StockFallback;
+    std::optional<std::string> region_name;
+    std::optional<std::string> recommended_tool_class;
+    std::optional<std::string> fallback_tool_class;
+    std::optional<std::string> selected_process_profile;
+    std::optional<double> selected_layer_height_mm;
+    std::optional<std::string> selected_line_width_class;
+    std::optional<bool> cost_gate_passed;
+    std::optional<std::string> cost_gate_reason;
+    std::optional<std::string> fallback_reason;
+    std::vector<std::string> risk_flags;
+    std::optional<bool> local_z_future_required;
+    std::optional<bool> touchscreen_mixed_nozzle_blocked;
     std::vector<std::string> warnings;
 
     bool operator<(const AdaptiveManufacturingDebugEntry &rhs) const;

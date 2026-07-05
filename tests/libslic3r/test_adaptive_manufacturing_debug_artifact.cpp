@@ -93,3 +93,59 @@ TEST_CASE("Adaptive manufacturing debug artifact preserves warnings and clears e
     REQUIRE(artifact.warnings().size() == 1);
     CHECK(artifact.warnings().front() == "developer-only artifact");
 }
+
+TEST_CASE("Adaptive manufacturing debug artifact stores packet-compatible advisory fields", "[AdaptiveManufacturingDebugArtifact]")
+{
+    AdaptiveManufacturingDebugArtifact artifact;
+    artifact.generation_mode = AdaptiveManufacturingDebugGenerationMode::OfflineAdvisory;
+
+    AdaptiveManufacturingDebugEntry entry;
+    entry.object_id = 0;
+    entry.layer_id = 0;
+    entry.region_id = 0;
+    entry.region_name = "micro_detail_zone";
+    entry.recommended_tool_class = "0.2";
+    entry.fallback_tool_class = "0.4";
+    entry.selected_process_profile = "0.06 Standard @Snapmaker U1 (0.2 nozzle)";
+    entry.selected_layer_height_mm = 0.06;
+    entry.selected_line_width_class = "0.22";
+    entry.cost_gate_passed = true;
+    entry.cost_gate_reason = "region-size gate passed";
+    entry.fallback_reason = "fallback to 0.4";
+    entry.risk_flags.push_back("local_z_future_required");
+    entry.risk_flags.push_back("touchscreen_mixed_nozzle_blocked");
+    entry.local_z_future_required = true;
+    entry.touchscreen_mixed_nozzle_blocked = true;
+    entry.source_stage = AdaptiveManufacturingDebugSourceStage::OfflinePlanPacket;
+
+    artifact.add_entry(entry);
+
+    REQUIRE(artifact.generation_mode == AdaptiveManufacturingDebugGenerationMode::OfflineAdvisory);
+    REQUIRE(artifact.entries().size() == 1);
+
+    const AdaptiveManufacturingDebugEntry &stored = artifact.entries().front();
+    REQUIRE(stored.region_name.has_value());
+    CHECK(*stored.region_name == "micro_detail_zone");
+    REQUIRE(stored.recommended_tool_class.has_value());
+    CHECK(*stored.recommended_tool_class == "0.2");
+    REQUIRE(stored.fallback_tool_class.has_value());
+    CHECK(*stored.fallback_tool_class == "0.4");
+    REQUIRE(stored.selected_process_profile.has_value());
+    CHECK(*stored.selected_process_profile == "0.06 Standard @Snapmaker U1 (0.2 nozzle)");
+    REQUIRE(stored.selected_layer_height_mm.has_value());
+    CHECK(*stored.selected_layer_height_mm == 0.06);
+    REQUIRE(stored.selected_line_width_class.has_value());
+    CHECK(*stored.selected_line_width_class == "0.22");
+    REQUIRE(stored.cost_gate_passed.has_value());
+    CHECK(*stored.cost_gate_passed);
+    REQUIRE(stored.cost_gate_reason.has_value());
+    CHECK(*stored.cost_gate_reason == "region-size gate passed");
+    REQUIRE(stored.fallback_reason.has_value());
+    CHECK(*stored.fallback_reason == "fallback to 0.4");
+    CHECK(stored.risk_flags.size() == 2);
+    REQUIRE(stored.local_z_future_required.has_value());
+    CHECK(*stored.local_z_future_required);
+    REQUIRE(stored.touchscreen_mixed_nozzle_blocked.has_value());
+    CHECK(*stored.touchscreen_mixed_nozzle_blocked);
+    CHECK(stored.source_stage == AdaptiveManufacturingDebugSourceStage::OfflinePlanPacket);
+}
