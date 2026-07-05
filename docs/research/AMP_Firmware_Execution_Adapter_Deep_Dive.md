@@ -60,6 +60,14 @@ Reference:
 
 AMP use: reference for how an adapter can map planner tool classes into tool objects rather than raw T-code.
 
+### Klipper NozzleChange Extra
+
+Status: research-only candidate.
+
+`klipper_nozzlechange_extra` is not emitted by the current adapter manifest. It remains on the research list until AMP has a concrete implementation source, command model, assumptions, and safety boundary for that adapter family.
+
+AMP use: possible future adapter after documentation and source review.
+
 ### RepRapFirmware / Duet Path
 
 Status: clean conceptual model.

@@ -91,6 +91,18 @@ The pseudo-emitter does not emit executable production tool-selection commands.
 | `klipper_ktcc_reference` | no | no | yes |
 | `reprap_firmware_reference` | no | no | yes |
 
+## NozzleChange Status
+
+`klipper_nozzlechange_extra` was not emitted in this pass. It remains a research-only candidate until AMP has a concrete implementation source and documented command model for that adapter family.
+
+The current emitted set intentionally focuses on:
+
+- Snapmaker blocked/advisory behavior
+- Snapmaker Fluidd/Klipper future experimental behavior
+- generic Klipper macro behavior
+- KTCC-style tool-object behavior
+- RepRapFirmware reference semantics
+
 ## Recommended Next Path
 
 1. Keep Snapmaker touchscreen mixed physical nozzle execution blocked/advisory.
