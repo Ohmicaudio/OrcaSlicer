@@ -1,5 +1,6 @@
 #include <catch2/catch.hpp>
 
+#include "amp_debug_artifact_test_helpers.hpp"
 #include "libslic3r/AdaptiveManufacturingPacketSidecar.hpp"
 
 using namespace Slic3r;
@@ -179,4 +180,43 @@ TEST_CASE("AMP packet sidecar assigns stable synthetic ids when numeric ids are 
     CHECK(sidecar.entries()[1].first.layer_id == 0);
     CHECK(sidecar.entries()[1].first.region_id == 1);
     CHECK(sidecar.entries()[1].first.region_name == "synthetic_second");
+}
+
+TEST_CASE("AMP golden packet debug artifact imports into packet sidecar", "[AdaptiveManufacturingPacketSidecar]")
+{
+    const AdaptiveManufacturingDebugArtifact artifact =
+        import_debug_artifact_from_json_fixture("tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json");
+    const AdaptiveManufacturingPacketSidecar sidecar = make_packet_sidecar_from_debug_artifact(artifact);
+
+    REQUIRE(sidecar.size() == 4);
+
+    const AdaptiveManufacturingPacketPlan *micro = sidecar.find({0, 0, 0, "micro_detail_zone"});
+    REQUIRE(micro != nullptr);
+    CHECK(micro->recommended_tool_class == "0.2");
+    CHECK(micro->fallback_tool_class == "0.4");
+    CHECK(micro->selected_process_profile == "0.06 Standard @Snapmaker U1 (0.2 nozzle)");
+    CHECK(micro->selected_layer_height_mm == Approx(0.06));
+    CHECK(micro->local_z_future_required);
+    CHECK(micro->touchscreen_mixed_nozzle_blocked);
+    REQUIRE(micro->risk_flags.size() == 2);
+    CHECK(micro->risk_flags[0] == "local_z_future_required");
+    CHECK(micro->risk_flags[1] == "touchscreen_mixed_nozzle_blocked");
+
+    const AdaptiveManufacturingPacketPlan *normal = sidecar.find({0, 1, 1, "normal_visible_detail_zone"});
+    REQUIRE(normal != nullptr);
+    CHECK(normal->recommended_tool_class == "0.4");
+    CHECK(normal->selected_process_profile == "0.16 Optimal @Snapmaker U1 (0.4 nozzle)");
+
+    const AdaptiveManufacturingPacketPlan *shell = sidecar.find({0, 2, 2, "structural_shell_zone"});
+    REQUIRE(shell != nullptr);
+    CHECK(shell->recommended_tool_class == "0.6");
+    CHECK(shell->selected_process_profile == "0.24 Standard @Snapmaker U1 (0.6 nozzle)");
+
+    const AdaptiveManufacturingPacketPlan *bulk = sidecar.find({0, 3, 3, "bulk_zone"});
+    REQUIRE(bulk != nullptr);
+    CHECK(bulk->recommended_tool_class == "0.8");
+    CHECK(bulk->selected_process_profile == "0.40 Standard @Snapmaker U1 (0.8 nozzle)");
+
+    const AdaptiveManufacturingPacketSidecar repeated = make_packet_sidecar_from_debug_artifact(artifact);
+    CHECK(repeated.entries() == sidecar.entries());
 }

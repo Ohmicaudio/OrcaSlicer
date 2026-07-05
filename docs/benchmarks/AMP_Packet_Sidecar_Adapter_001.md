@@ -94,6 +94,39 @@ The sidecar adapter test constructs a four-region packet-shaped debug artifact m
 
 The test verifies deterministic ordering, key lookup, risk flag preservation, local-Z advisory preservation, touchscreen-block preservation, missing optional field handling, and repeated conversion stability.
 
+## Golden JSON End-to-End Result
+
+The packet sidecar test also imports the committed golden artifact:
+
+```text
+tests/libslic3r/data/amp_debug_artifact_offline_plan_packet_golden.json
+```
+
+Path tested:
+
+```text
+golden debug_artifact.json
+-> test-only JSON import helper
+-> AdaptiveManufacturingDebugArtifact
+-> make_packet_sidecar_from_debug_artifact()
+-> deterministic packet sidecar lookup
+```
+
+The shared test-only helper lives at:
+
+```text
+tests/libslic3r/amp_debug_artifact_test_helpers.hpp
+```
+
+Lookup assertions cover all four U1 tool classes:
+
+- `micro_detail_zone`: `0.2`, fallback `0.4`, `0.06 Standard @Snapmaker U1 (0.2 nozzle)`, local-Z advisory true, touchscreen block true
+- `normal_visible_detail_zone`: `0.4`, `0.16 Optimal @Snapmaker U1 (0.4 nozzle)`
+- `structural_shell_zone`: `0.6`, `0.24 Standard @Snapmaker U1 (0.6 nozzle)`
+- `bulk_zone`: `0.8`, `0.40 Standard @Snapmaker U1 (0.8 nozzle)`
+
+No production slicer path consumes this sidecar.
+
 ## Focused AMP Test Result
 
 Focused compile command:
@@ -136,7 +169,7 @@ Focused test command:
 Observed result:
 
 ```text
-All tests passed (1544 assertions in 37 test cases)
+All tests passed (2149 assertions in 38 test cases)
 ```
 
 ## What This Proves
@@ -144,6 +177,7 @@ All tests passed (1544 assertions in 37 test cases)
 - AMP packet-shaped debug artifacts can now be converted into deterministic C++ sidecar-style lookup data.
 - Packet fields can be preserved across debug-artifact value objects and sidecar-style lookup objects.
 - Packet plans can be looked up by object/layer/region key and region name.
+- The committed golden debug artifact JSON can be imported and converted into packet sidecar lookup data.
 - Missing optional packet fields are handled without crashing.
 - Repeated conversion of the same artifact produces identical sidecar contents.
 - No production slicer path consumes the packet sidecar.
