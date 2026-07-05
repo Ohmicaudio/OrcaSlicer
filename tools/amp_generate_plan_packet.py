@@ -176,6 +176,8 @@ def gcode_status_packet(
 
 def debug_artifact_packet(
     resolution_rows: dict[str, dict[str, Any]],
+    assignments: dict[str, dict[str, Any]],
+    process_rows: dict[str, dict[str, Any]],
     schedule_payload: dict[str, Any],
     records: list[dict[str, Any]],
     validation: dict[str, Any],
@@ -185,7 +187,14 @@ def debug_artifact_packet(
     for step in schedule_payload["schedule"]:
         name = str(step["region_name"])
         plan = resolution_rows.get(name, {})
+        assignment = assignments.get(name, {})
+        process_row = process_rows.get(name, {})
         region_index = index_by_region.get(name, 0)
+        step_risk_flags = step.get("risk_flags", [])
+        assignment_risk_flags = str(assignment.get("risk_flags", "")).split("; ") if assignment.get("risk_flags") else []
+        process_risk_flags = process_row.get("risk_flags", [])
+        risk_flags = merge_risk_flags(step_risk_flags, assignment_risk_flags, process_risk_flags)
+        local_z_future_required = bool(process_row.get("local_z_future_required")) or "local_z_future_required" in risk_flags
         entries.append(
             {
                 "object_id": region_index,
@@ -198,7 +207,18 @@ def debug_artifact_packet(
                 "bead_width_override_present": False,
                 "nozzle_override_present": True,
                 "source_stage": "offline_plan_packet",
-                "warnings": step.get("risk_flags", []),
+                "recommended_tool_class": assignment.get("recommended_tool_class", step.get("tool_class", "")),
+                "fallback_tool_class": assignment.get("fallback_tool_class", process_row.get("fallback_tool_class", "")),
+                "selected_process_profile": process_row.get("selected_process_profile", step.get("selected_process_profile", "")),
+                "selected_layer_height_mm": float(process_row.get("selected_layer_height_mm", step.get("selected_layer_height_mm", 0.0))),
+                "selected_line_width_class": str(process_row.get("selected_line_width_class", step.get("selected_line_width_class", ""))),
+                "cost_gate_passed": str(assignment.get("cost_gate_passed", "false")).lower() == "true",
+                "cost_gate_reason": assignment.get("cost_gate_reason", ""),
+                "fallback_reason": assignment.get("fallback_reason", ""),
+                "risk_flags": risk_flags,
+                "local_z_future_required": local_z_future_required,
+                "touchscreen_mixed_nozzle_blocked": bool(process_row.get("touchscreen_mixed_nozzle_blocked", True)),
+                "warnings": risk_flags,
             }
         )
     warnings_by_region = {entry["region_name"]: entry.get("warnings", []) for entry in entries}
@@ -328,7 +348,7 @@ def build_packet(input_path: Path, repo_root: Path, schedule_mode: str, metrics_
         "toolchange_schedule": schedule_payload,
         "per_region_gcode_status": gcode,
         "validation": validation,
-        "debug_artifact": debug_artifact_packet(resolution_by_region, schedule_payload, records, validation),
+        "debug_artifact": debug_artifact_packet(resolution_by_region, assignments_by_region, process_by_region, schedule_payload, records, validation),
     }
 
 

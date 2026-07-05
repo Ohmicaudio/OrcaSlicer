@@ -143,16 +143,43 @@ Command:
 python tools\amp_debug_artifact_contract_check.py outputs\amp_plan_packet_001\debug_artifact.json outputs\amp_plan_packet_001_detail_first\debug_artifact.json
 ```
 
-Observed result:
+Observed result before the generator-side field population update:
 
 ```text
 outputs/amp_plan_packet_001/debug_artifact.json: passed, 0 errors, 1 warning
 outputs/amp_plan_packet_001_detail_first/debug_artifact.json: passed, 0 errors, 1 warning
 ```
 
-The warning is expected for the current generated packet artifacts: they are schema-compatible, but the Python packet generator currently populates only `region_name` from the newly supported packet-compatible field set.
+The warning was expected at that point: the artifacts were schema-compatible, but the Python packet generator populated only `region_name` from the newly supported packet-compatible field set.
 
-The C++ debug artifact schema and serializer can now represent the fuller packet-shaped advisory entries. Populating every new packet field in the Python-generated `debug_artifact.json` should be a follow-up generator update.
+Follow-up generator update:
+
+```text
+tools/amp_generate_plan_packet.py
+```
+
+The Python packet generator now emits full packet-compatible debug artifact fields:
+
+- `recommended_tool_class`
+- `fallback_tool_class`
+- `selected_process_profile`
+- `selected_layer_height_mm`
+- `selected_line_width_class`
+- `cost_gate_passed`
+- `cost_gate_reason`
+- `fallback_reason`
+- `risk_flags`
+- `local_z_future_required`
+- `touchscreen_mixed_nozzle_blocked`
+
+Observed result after regenerating the packets:
+
+```text
+outputs/amp_plan_packet_001/debug_artifact.json: passed, 0 errors, 0 warnings
+outputs/amp_plan_packet_001_detail_first/debug_artifact.json: passed, 0 errors, 0 warnings
+```
+
+The generated artifact now includes region/tool/profile/cost/risk/local-Z/touchscreen-block fields while remaining offline/advisory only.
 
 ## What This Proves
 
@@ -160,6 +187,7 @@ The C++ debug artifact schema and serializer can now represent the fuller packet
 - The C++ serializer can emit packet-shaped advisory entries deterministically.
 - Packet-shaped entries can carry tool class, fallback, process profile, layer height, line-width class, cost-gate, risk, local-Z, and touchscreen-block fields.
 - The current generated offline debug artifact is compatible with the supported C++ schema.
+- The Python packet generator now populates the full packet-compatible debug artifact field set.
 - This artifact shape is suitable as a future sidecar/debug output target.
 
 ## What This Does Not Prove
@@ -186,7 +214,6 @@ The next safe target is:
 
 ```text
 Python offline packet debug_artifact.json
--> populate full packet-compatible fields
 -> C++ debug artifact compatibility check
 -> future read-only sidecar/debug export
 ```

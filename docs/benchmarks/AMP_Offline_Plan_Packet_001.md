@@ -129,10 +129,27 @@ It includes:
 - toolchange-requested status
 - confidence
 - plan reason
+- recommended tool class
+- fallback tool class
+- selected U1 process profile
+- selected layer height
+- selected line-width class
+- cost-gate result and reason
+- fallback reason
+- risk flags
+- local-Z advisory status
+- touchscreen mixed-nozzle block status
 - warnings/risk flags
 - observation summary entries
 
 It does not include geometry polygons, coordinates, G-code snippets, Arachne state, Flow mutation data, or physical nozzle commands.
+
+After the packet-compatibility update, `debug_artifact.json` is fully populated for the C++ packet-compatible field set. The debug artifact contract check passes for both generated packet modes with:
+
+```text
+errors: 0
+warnings: 0
+```
 
 ## Validation Checks
 
