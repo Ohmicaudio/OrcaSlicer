@@ -1,0 +1,195 @@
+{
+  "schema_version": "0.1",
+  "title": "AMP Fluidd Klipper Hardware Preflight 001 Checklist",
+  "checks": [
+    {
+      "check_id": "HW-001",
+      "category": "hardware",
+      "description": "Physical U1 hardware is available for controlled validation.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not attempt Fluidd/Klipper AMP dry-run.",
+      "evidence_required": "Hardware serial, machine identity, or lab note confirming physical U1 access."
+    },
+    {
+      "check_id": "HW-002",
+      "category": "hardware",
+      "description": "Physical toolhead count is confirmed.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until toolhead inventory is confirmed.",
+      "evidence_required": "Photo, configuration export, or written inventory."
+    },
+    {
+      "check_id": "TM-001",
+      "category": "tool_map",
+      "description": "Installed nozzle size is confirmed for every physical toolhead.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until physical nozzle state matches the intended tool map.",
+      "evidence_required": "Tool-by-tool nozzle inventory."
+    },
+    {
+      "check_id": "TM-002",
+      "category": "tool_map",
+      "description": "Intended 0.2 / 0.4 / 0.6 / 0.8 AMP tool map is documented.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not continue until AMP tool classes map to physical tools.",
+      "evidence_required": "Filled tool map with physical toolhead IDs."
+    },
+    {
+      "check_id": "MAT-001",
+      "category": "material",
+      "description": "Material compatibility is confirmed per nozzle.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until material/nozzle compatibility is reviewed.",
+      "evidence_required": "Material and nozzle compatibility note."
+    },
+    {
+      "check_id": "MAT-002",
+      "category": "material",
+      "description": "0.2 mm nozzle is not used with PETG-CF, PETG-GF, Wood, or TPU unless separately validated.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Remove restricted material/nozzle pairing or provide separate validation.",
+      "evidence_required": "Material selection note or separate validation record."
+    },
+    {
+      "check_id": "FW-001",
+      "category": "firmware_path",
+      "description": "Fluidd path is confirmed and touchscreen-started mixed-nozzle path remains blocked.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not attempt any mixed-nozzle dry-run from touchscreen.",
+      "evidence_required": "Operator note confirming Fluidd-only path."
+    },
+    {
+      "check_id": "ESTOP-001",
+      "category": "emergency_stop",
+      "description": "Emergency stop access is confirmed before any motion-capable test.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until emergency stop is verified.",
+      "evidence_required": "Operator note or photo showing emergency stop access."
+    },
+    {
+      "check_id": "MOT-001",
+      "category": "motion",
+      "description": "Homing behavior is confirmed.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until homing is understood.",
+      "evidence_required": "Dry-run or machine-state note."
+    },
+    {
+      "check_id": "MOT-002",
+      "category": "motion",
+      "description": "Bed is clear and parking/docking coordinates are known.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until machine space and parking positions are safe.",
+      "evidence_required": "Bed-clear note and parking/docking coordinate record."
+    },
+    {
+      "check_id": "OFF-001",
+      "category": "offsets",
+      "description": "Tool offsets are known for every physical tool.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until offsets are measured or confirmed.",
+      "evidence_required": "Tool offset table."
+    },
+    {
+      "check_id": "OFF-002",
+      "category": "offsets",
+      "description": "Z offsets are checked for every physical tool.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until Z offset behavior is understood.",
+      "evidence_required": "Z offset table or calibration note."
+    },
+    {
+      "check_id": "PURGE-001",
+      "category": "purge_wipe",
+      "description": "Purge/wipe behavior is observed before extrusion-capable tests.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until purge/wipe behavior is characterized.",
+      "evidence_required": "Purge/wipe observation note."
+    },
+    {
+      "check_id": "SW-001",
+      "category": "software_packet",
+      "description": "AMP plan packet validator passes.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Regenerate or fix AMP packet before any hardware work.",
+      "evidence_required": "Validator output path or pasted result."
+    },
+    {
+      "check_id": "SW-002",
+      "category": "software_packet",
+      "description": "Firmware adapter output validator passes.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not continue until adapter outputs are verified non-printable.",
+      "evidence_required": "Firmware adapter validation report."
+    },
+    {
+      "check_id": "SW-003",
+      "category": "software_packet",
+      "description": "Generated sandbox files are comments-only or dry-run only.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop and regenerate sandbox files.",
+      "evidence_required": "Sandbox command scan result."
+    },
+    {
+      "check_id": "DRY-000",
+      "category": "dry_run_stage",
+      "description": "Step 0 offline validation has passed.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not proceed to hardware dry-run.",
+      "evidence_required": "Offline validation reports."
+    },
+    {
+      "check_id": "DRY-001",
+      "category": "dry_run_stage",
+      "description": "Step 1 air/dry-run with no heating and no extrusion is complete.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not proceed to tool selection tests.",
+      "evidence_required": "Air/dry-run observation note."
+    },
+    {
+      "check_id": "DRY-002",
+      "category": "dry_run_stage",
+      "description": "Step 2 single-tool dry-run is complete.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not proceed to two-tool dry-run.",
+      "evidence_required": "Single-tool dry-run note."
+    },
+    {
+      "check_id": "DRY-003",
+      "category": "dry_run_stage",
+      "description": "Step 3 two-tool dry-run with no extrusion is complete.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not proceed to same-nozzle toolchange test.",
+      "evidence_required": "Two-tool dry-run note."
+    },
+    {
+      "check_id": "DRY-004",
+      "category": "dry_run_stage",
+      "description": "Step 4 single material / same nozzle size toolchange test is complete.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not proceed to Fluidd-only mixed-nozzle test.",
+      "evidence_required": "Same-nozzle toolchange observation note."
+    }
+  ]
+}
