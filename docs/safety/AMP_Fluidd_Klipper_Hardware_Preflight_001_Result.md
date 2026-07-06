@@ -11,7 +11,7 @@ python tools\amp_validate_hardware_preflight.py --checklist docs\safety\AMP_Flui
 Result:
 
 ```text
-status=not_ready ready=false pending_required=21 failed_required=0 invalid=0
+status=not_ready ready=false pending_required=28 failed_required=0 invalid=0
 ```
 
 Expected status:
@@ -24,7 +24,7 @@ not_ready
 
 No hardware evidence has been supplied.
 
-The default checklist intentionally keeps every required item at `pending`. This means the project cannot proceed to any Fluidd/Klipper hardware dry-run until evidence is recorded for hardware state, tool map, material compatibility, firmware path, motion safety, offsets, purge/wipe behavior, software packet validation, emergency stop access, and dry-run ladder stage.
+The default checklist intentionally keeps every required item at `pending`. This means the project cannot proceed to any Fluidd/Klipper hardware dry-run until evidence is recorded for hardware state, tool map, material compatibility, firmware path, custom-firmware research path if used, motion safety, offsets, purge/wipe behavior, software packet validation, emergency stop access, and dry-run ladder stage.
 
 ## Required Evidence Before Status Can Change
 
@@ -34,6 +34,9 @@ The default checklist intentionally keeps every required item at `pending`. This
 - Intended 0.2 / 0.4 / 0.6 / 0.8 tool map.
 - Material/nozzle compatibility evidence.
 - Fluidd-only path confirmation.
+- Custom firmware presence, source/version, and recovery method if a custom firmware research target is used.
+- Confirmed `extended/klipper` include path before any future paxx12 adapter experiment.
+- Macro review evidence before any sandbox file is copied to a printer.
 - Emergency stop access.
 - Homing and bed-clear confirmation.
 - Parking/docking coordinates.

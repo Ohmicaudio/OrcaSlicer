@@ -58,6 +58,22 @@ Avoid 0.2 mm nozzles with PETG-CF, PETG-GF, Wood, or TPU unless separately valid
 - No extrusion commands.
 - No real macro execution unless explicitly reviewed later.
 
+## paxx12 U1 Extended Firmware Research Checks
+
+The `paxx12_u1_extended_firmware` adapter is a concrete Fluidd/Klipper research target only. It is not installed, flashed, or recommended by AMP.
+
+Before any future hardware experiment can be considered:
+
+- confirm whether custom firmware is actually present on the test machine
+- record the firmware source and version
+- confirm the recovery method before any configuration work
+- confirm the `extended/klipper` include path on hardware
+- review every macro before any installation attempt
+- do not install generated sandbox files without human review
+- keep the paxx12 adapter `research_only` until hardware evidence exists
+
+Invalid Klipper or Moonraker configuration can prevent services from starting. Recovery must be understood before moving beyond offline artifacts.
+
 ## First Dry-Run Ladder
 
 | Step | Gate | Required result |
@@ -88,6 +104,7 @@ The preflight gate requires explicit evidence before any status can change from 
 
 - filled checklist with every required item passed
 - U1 hardware/toolhead inventory
+- firmware source/version and recovery method if using a custom firmware research target
 - installed nozzle/tool map
 - offset evidence
 - Fluidd-only path confirmation

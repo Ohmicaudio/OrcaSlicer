@@ -66,6 +66,69 @@
       "evidence_required": "Operator note confirming Fluidd-only path."
     },
     {
+      "check_id": "FW-EXT-001",
+      "category": "firmware_path",
+      "description": "Custom firmware presence is confirmed before using any paxx12 U1 Extended Firmware research path.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Keep paxx12 adapter research-only and offline.",
+      "evidence_required": "Operator note confirming whether custom firmware is present on the target machine."
+    },
+    {
+      "check_id": "FW-EXT-002",
+      "category": "firmware_path",
+      "description": "Firmware source and version are recorded.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until firmware source and version are documented.",
+      "evidence_required": "Repository URL, release/tag/version, and machine firmware note."
+    },
+    {
+      "check_id": "FW-EXT-003",
+      "category": "firmware_path",
+      "description": "Recovery method is known before any custom firmware configuration work.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Stop until recovery path is documented.",
+      "evidence_required": "Recovery procedure reference or operator note."
+    },
+    {
+      "check_id": "FW-EXT-004",
+      "category": "firmware_path",
+      "description": "The extended/klipper include path is confirmed on the target hardware.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not prepare hardware-side macros until include path is verified.",
+      "evidence_required": "Fluidd/Mainsail configuration screenshot, file listing, or operator note."
+    },
+    {
+      "check_id": "FW-EXT-005",
+      "category": "firmware_path",
+      "description": "Macros are reviewed before any installation attempt.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not install or load AMP macro files.",
+      "evidence_required": "Reviewed macro diff or signed operator note."
+    },
+    {
+      "check_id": "FW-EXT-006",
+      "category": "firmware_path",
+      "description": "No sandbox file is installed without review.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Do not copy generated sandbox files to the printer.",
+      "evidence_required": "Operator note confirming sandbox files remained offline or were reviewed before any copy."
+    },
+    {
+      "check_id": "FW-EXT-007",
+      "category": "firmware_path",
+      "description": "The paxx12 adapter remains research_only until hardware evidence exists.",
+      "required": true,
+      "status_default": "pending",
+      "failure_action": "Keep the adapter disabled/offline.",
+      "evidence_required": "Hardware validation record before status can change."
+    },
+    {
       "check_id": "ESTOP-001",
       "category": "emergency_stop",
       "description": "Emergency stop access is confirmed before any motion-capable test.",

@@ -82,6 +82,22 @@ def pseudo_command_lines(adapter: dict[str, Any], step: dict[str, Any]) -> list[
                 f"; WOULD_RESTORE_STATE {adapter.get('state_restore_command', 'RESTORE_GCODE_STATE NAME=amp_toolchange')}",
             ]
         )
+    elif style == "paxx12_u1_extended_firmware":
+        region_name = str(step.get("region_name", ""))
+        lines.extend(
+            [
+                f"; WOULD_PLACE_MACRO_IN {adapter.get('future_include_path', 'extended/klipper/amp_macros.cfg')}",
+                "; WOULD_REGISTER_PRINT_START_HOOK _PRINT_START_AMP_VALIDATE_PACKET",
+                "; WOULD_REGISTER_PRINT_END_HOOK _PRINT_END_AMP_CLEANUP",
+                "; WOULD_REGISTER_CANCEL_PRINT_HOOK _CANCEL_PRINT_AMP_ABORT",
+                f"; WOULD_DRY_RUN_SELECT_TOOL TOOL_CLASS={tool_class} REGION=\"{region_name}\"",
+                "; WOULD_VALIDATE_TOOL_MAP_FROM_AMP_PACKET",
+                "; WOULD_REQUIRE_HARDWARE_PREFLIGHT_PASS",
+                "; WOULD_NOT_INSTALL_FIRMWARE",
+                "; WOULD_NOT_EXECUTE_REAL_MOTION",
+                "; WOULD_NOT_BYPASS_TOUCHSCREEN_VALIDATION",
+            ]
+        )
     elif style == "klipper_ktcc":
         lines.extend(
             [
@@ -182,6 +198,18 @@ def emit(packet_dir: Path, manifest_path: Path, adapter_id: str, out_root: Path)
         f"; packet={str(packet_dir).replace(chr(92), '/')}",
         "",
     ]
+    if adapter_id == "paxx12_u1_extended_firmware":
+        pseudo_lines.extend(
+            [
+                "; AMP adapter target: paxx12 U1 Extended Firmware",
+                "; Intended future location: extended/klipper/amp_macros.cfg",
+                "; Intended future hooks: PRINT_START / PRINT_END / CANCEL_PRINT",
+                "; This does not install firmware",
+                "; This does not execute real motion",
+                "; This does not bypass touchscreen validation",
+                "",
+            ]
+        )
     for warning in safety_warnings:
         pseudo_lines.append(f"; SAFETY_WARNING {warning}")
     pseudo_lines.append("")

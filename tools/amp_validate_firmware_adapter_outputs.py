@@ -164,6 +164,8 @@ def adapter_status(adapter: dict[str, Any]) -> str:
         return "blocked_advisory"
     if adapter_id == "snapmaker_fluidd_klipper_experimental":
         return "future_experimental"
+    if adapter_id == "paxx12_u1_extended_firmware":
+        return "research_only_future_experimental"
     if adapter_id in {"generic_klipper_macro", "klipper_ktcc_reference", "reprap_firmware_reference"}:
         return "reference_only"
     if adapter_id == "klipper_nozzlechange_extra":
@@ -202,6 +204,17 @@ def validate_manifest_consistency(manifest_path: Path, pseudo_root: Path, result
                 result.error("snapmaker_fluidd_klipper_experimental must require hardware validation")
             if adapter.get("fluidd_only") is not True:
                 result.error("snapmaker_fluidd_klipper_experimental must be marked fluidd_only")
+        if adapter_id == "paxx12_u1_extended_firmware":
+            if adapter.get("requires_hardware_validation") is not True:
+                result.error("paxx12_u1_extended_firmware must require hardware validation")
+            if adapter.get("fluidd_only") is not True:
+                result.error("paxx12_u1_extended_firmware must be marked fluidd_only")
+            if adapter.get("touchscreen_safe") is not False:
+                result.error("paxx12_u1_extended_firmware must not be touchscreen safe")
+            if adapter.get("supports_custom_klipper_includes") is not True:
+                result.error("paxx12_u1_extended_firmware must record custom Klipper include support")
+            if adapter.get("supports_print_hooks") is not True:
+                result.error("paxx12_u1_extended_firmware must record print hook support")
         if adapter_id in {"generic_klipper_macro", "klipper_ktcc_reference", "reprap_firmware_reference"}:
             if adapter.get("requires_hardware_validation") is not True:
                 result.error(f"{adapter_id} must require hardware validation")

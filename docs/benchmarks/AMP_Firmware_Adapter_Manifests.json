@@ -61,6 +61,67 @@
       ]
     },
     {
+      "adapter_id": "paxx12_u1_extended_firmware",
+      "adapter_name": "paxx12 U1 Extended Firmware Adapter",
+      "adapter_family": "snapmaker_u1_extended_firmware",
+      "target_controller": "Snapmaker U1 Extended Firmware Fluidd/Klipper path",
+      "execution_status": "research_only_future_experimental",
+      "emission_style": "macro_pseudo",
+      "supports_toolchange_commands": true,
+      "supports_per_tool_offsets": "future_macro",
+      "supports_per_tool_heaters": "future_macro",
+      "supports_standby_temperature": "future_macro",
+      "supports_tool_parking": "future_macro",
+      "supports_state_save_restore": true,
+      "supports_purge_wipe_macros": "future_macro",
+      "supports_nozzle_metadata": false,
+      "supports_custom_klipper_includes": true,
+      "supports_print_hooks": true,
+      "supports_fluidd_mainsail": true,
+      "supports_ssh_if_enabled": true,
+      "install_required": false,
+      "firmware_modification_required": false,
+      "warranty_risk": "custom_firmware_damage_not_assumed_covered",
+      "recovery_required": true,
+      "source_url": "https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware",
+      "docs_url": "https://snapmakeru1-extended-firmware.pages.dev/",
+      "touchscreen_safe": false,
+      "fluidd_only": true,
+      "requires_hardware_validation": true,
+      "source_of_truth": "amp_plan_packet",
+      "command_style": "paxx12_u1_extended_firmware",
+      "state_save_command": "SAVE_GCODE_STATE NAME=amp_toolchange",
+      "state_restore_command": "RESTORE_GCODE_STATE NAME=amp_toolchange",
+      "future_include_path": "extended/klipper/amp_macros.cfg",
+      "future_tool_path": "extended/klipper/amp_tools.cfg",
+      "future_hooks": [
+        "_PRINT_START_AMP_VALIDATE_PACKET",
+        "_PRINT_END_AMP_CLEANUP",
+        "_CANCEL_PRINT_AMP_ABORT"
+      ],
+      "tool_map": {
+        "0.2": { "tool_id": "T0", "nozzle_diameter_mm": 0.2, "macro_name": "AMP_DRY_RUN_SELECT_TOOL", "offset": { "x": "hardware_required", "y": "hardware_required", "z": "hardware_required" } },
+        "0.4": { "tool_id": "T1", "nozzle_diameter_mm": 0.4, "macro_name": "AMP_DRY_RUN_SELECT_TOOL", "offset": { "x": "hardware_required", "y": "hardware_required", "z": "hardware_required" } },
+        "0.6": { "tool_id": "T2", "nozzle_diameter_mm": 0.6, "macro_name": "AMP_DRY_RUN_SELECT_TOOL", "offset": { "x": "hardware_required", "y": "hardware_required", "z": "hardware_required" } },
+        "0.8": { "tool_id": "T3", "nozzle_diameter_mm": 0.8, "macro_name": "AMP_DRY_RUN_SELECT_TOOL", "offset": { "x": "hardware_required", "y": "hardware_required", "z": "hardware_required" } }
+      },
+      "safety_notes": [
+        "Research-only adapter target for paxx12 U1 Extended Firmware documentation.",
+        "This branch does not install, flash, or recommend installing custom firmware.",
+        "Warranty coverage is not assumed for custom firmware changes.",
+        "Invalid Klipper or Moonraker configuration can prevent services from starting.",
+        "All output remains pseudo-only until hardware evidence exists."
+      ],
+      "safety_warnings": [
+        "Research-only adapter target.",
+        "No firmware installation or flashing is performed by AMP.",
+        "No executable mixed-nozzle commands are emitted.",
+        "Invalid Klipper or Moonraker configuration can prevent services from starting.",
+        "Recovery method must be known before any future hardware experiment.",
+        "Touchscreen-started mixed physical nozzle execution remains blocked."
+      ]
+    },
+    {
       "adapter_id": "generic_klipper_macro",
       "adapter_name": "Generic Klipper Macro Adapter",
       "target_controller": "Generic Klipper with user-defined macros",

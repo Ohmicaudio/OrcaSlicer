@@ -26,6 +26,7 @@ The single warning is intentional: `klipper_nozzlechange_extra` remains research
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | `snapmaker_touchscreen_blocked` | Snapmaker | blocked/advisory | yes | no | no | yes | no | no | high | Represents the current blocked touchscreen path for mixed physical nozzle execution. |
 | `snapmaker_fluidd_klipper_experimental` | Snapmaker/Klipper | future experimental | yes | yes | no | yes | no | yes | medium | Most realistic future experimental route after U1 hardware validation. |
+| `paxx12_u1_extended_firmware` | Snapmaker U1 Extended Firmware / Klipper | research-only/future experimental | yes | yes | no | yes | no | yes | medium/high for documented include and hook paths; low for mixed-nozzle execution | Concrete U1 Fluidd/Klipper adapter candidate based on public paxx12 extended-firmware docs. |
 | `generic_klipper_macro` | Klipper | reference/prototype | yes | no | no | yes | no | possible | medium | Macro model for future adapter shape; not printer-specific. |
 | `klipper_ktcc_reference` | Klipper/KTCC | reference/prototype | yes | no | no | yes | no | possible | medium | Tool-object reference model; not currently emitted as executable output. |
 | `reprap_firmware_reference` | RepRapFirmware/Duet | semantic reference | yes | no | no | yes | no | no | high | Clean reference model for T-code lifecycle semantics. |
@@ -58,6 +59,7 @@ The validator checks:
 - Current outputs are non-printable and comments-only.
 - Snapmaker touchscreen remains blocked.
 - Fluidd/Klipper remains the most realistic future experimental route.
+- paxx12 U1 Extended Firmware is a concrete U1 Fluidd/Klipper research target, but executable mixed-nozzle behavior remains unvalidated.
 - NozzleChange remains research-only unless concrete command semantics are reviewed.
 - KTCC and RepRapFirmware remain reference models.
 - No adapter is production-executable today.
@@ -70,3 +72,4 @@ The validator checks:
 - This does not generate a single mixed-nozzle G-code print.
 - This does not validate physical mixed-nozzle behavior.
 - This does not bypass Snapmaker touchscreen nozzle validation.
+- This does not install, flash, or recommend custom firmware.

@@ -36,6 +36,25 @@ TOOL_MACROS = {
     "0.8": "AMP_TOOL_0P8",
 }
 
+TARGETS = {
+    "generic_fluidd_klipper": {
+        "label": "Generic Fluidd/Klipper sandbox",
+        "tools_path": "amp_tools.cfg.template",
+        "macros_path": "amp_macros.cfg.template",
+        "hook_lines": [],
+    },
+    "paxx12_u1_extended_firmware": {
+        "label": "paxx12 U1 Extended Firmware sandbox",
+        "tools_path": "extended/klipper/amp_tools.cfg",
+        "macros_path": "extended/klipper/amp_macros.cfg",
+        "hook_lines": [
+            "# Future paxx12 hook placeholder: _PRINT_START_AMP_VALIDATE_PACKET",
+            "# Future paxx12 hook placeholder: _PRINT_END_AMP_CLEANUP",
+            "# Future paxx12 hook placeholder: _CANCEL_PRINT_AMP_ABORT",
+        ],
+    },
+}
+
 
 def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -133,8 +152,26 @@ def macro_block(name: str, description: str, message: str, params: list[str] | N
     return lines
 
 
-def generate_tools_cfg(tool_map: list[dict[str, Any]]) -> list[str]:
+def target_metadata(target: str) -> dict[str, Any]:
+    if target not in TARGETS:
+        raise ValueError(f"unknown sandbox target: {target}")
+    return TARGETS[target]
+
+
+def target_header(target: str) -> list[str]:
+    metadata = target_metadata(target)
+    return [
+        f"# AMP sandbox target: {metadata['label']}",
+        f"# Future tools path: {metadata['tools_path']}",
+        f"# Future macros path: {metadata['macros_path']}",
+        "# These paths are documentation targets only; this generator writes ignored local templates.",
+    ] + list(metadata["hook_lines"])
+
+
+def generate_tools_cfg(tool_map: list[dict[str, Any]], target: str = "generic_fluidd_klipper") -> list[str]:
     lines = HEADER + [
+        "",
+        *target_header(target),
         "",
         "# This file declares AMP tool placeholders for dry-run review only.",
         "# No heaters, extruders, offsets, movement, or tool-selection commands are configured here.",
@@ -158,8 +195,10 @@ def generate_tools_cfg(tool_map: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def generate_macros_cfg() -> list[str]:
+def generate_macros_cfg(target: str = "generic_fluidd_klipper") -> list[str]:
     lines = HEADER + [
+        "",
+        *target_header(target),
         "",
         "# These macros are dry-run placeholders. They intentionally avoid movement, heating, extrusion, and real tool selection.",
         "# Review and hardware validation are required before any executable macro can be created from this template.",
@@ -176,13 +215,24 @@ def generate_macros_cfg() -> list[str]:
         ("AMP_PURGE_WIPE_PLACEHOLDER", "purge/wipe placeholder", "would run reviewed purge or wipe macro"),
         ("AMP_PRINT_REGION_PLACEHOLDER", "region print placeholder", "would print region using slicer-generated toolpaths in a future integration", ["region_name"]),
     ]
+    if target == "paxx12_u1_extended_firmware":
+        macros.extend(
+            [
+                ("_PRINT_START_AMP_VALIDATE_PACKET", "paxx12 PRINT_START hook placeholder", "would validate AMP packet before print start"),
+                ("_PRINT_END_AMP_CLEANUP", "paxx12 PRINT_END hook placeholder", "would clean up AMP dry-run state after print end"),
+                ("_CANCEL_PRINT_AMP_ABORT", "paxx12 CANCEL_PRINT hook placeholder", "would abort AMP dry-run state after cancel"),
+            ]
+        )
     for spec in macros:
         lines.extend(macro_block(*spec))
     return lines
 
 
-def generate_dry_run_schedule(schedule: dict[str, Any]) -> list[str]:
+def generate_dry_run_schedule(schedule: dict[str, Any], target: str = "generic_fluidd_klipper") -> list[str]:
     lines = GCODE_HEADER + [
+        f"; AMP sandbox target: {target_metadata(target)['label']}",
+        f"; Future tools path: {target_metadata(target)['tools_path']}",
+        f"; Future macros path: {target_metadata(target)['macros_path']}",
         "; Comments-only schedule with optional RESPOND dry-run lines.",
         "; No uncommented T commands.",
         "; No uncommented motion.",
@@ -212,11 +262,13 @@ def generate_dry_run_schedule(schedule: dict[str, Any]) -> list[str]:
     return lines
 
 
-def generate_preflight_checklist() -> list[str]:
-    return [
+def generate_preflight_checklist(target: str = "generic_fluidd_klipper") -> list[str]:
+    lines = [
         "# AMP Fluidd/Klipper Sandbox Preflight Checklist",
         "",
         "This checklist is for a future developer-only dry-run path. The sandbox is not printable.",
+        "",
+        f"Target: `{target_metadata(target)['label']}`",
         "",
         "- [ ] Confirm physical nozzle installed per tool.",
         "- [ ] Confirm tool offsets for every physical tool.",
@@ -230,14 +282,26 @@ def generate_preflight_checklist() -> list[str]:
         "- [ ] Confirm emergency stop access.",
         "- [ ] Confirm first hardware test is air/dry-run or non-extruding.",
     ]
+    if target == "paxx12_u1_extended_firmware":
+        lines.extend(
+            [
+                "- [ ] Confirm paxx12 U1 Extended Firmware source/version is recorded.",
+                "- [ ] Confirm recovery method is known before any future config work.",
+                "- [ ] Confirm `extended/klipper` include path exists on the target only after review.",
+                "- [ ] Confirm generated sandbox files are reviewed before any installation attempt.",
+                "- [ ] Confirm this adapter remains research-only until hardware evidence exists.",
+            ]
+        )
+    return lines
 
 
-def generate_safety_report() -> list[str]:
-    return [
+def generate_safety_report(target: str = "generic_fluidd_klipper") -> list[str]:
+    lines = [
         "# AMP Fluidd/Klipper Sandbox Safety Report",
         "",
         "## Status",
         "",
+        f"- Target: `{target_metadata(target)['label']}`",
         "- Sandbox output only.",
         "- Macro templates are disabled/dry-run placeholders.",
         "- Dry-run schedule is comments-only plus commented RESPOND examples.",
@@ -253,29 +317,46 @@ def generate_safety_report() -> list[str]:
         "- This does not validate physical mixed-nozzle behavior.",
         "- This does not bypass Snapmaker touchscreen nozzle validation.",
     ]
+    if target == "paxx12_u1_extended_firmware":
+        lines.extend(
+            [
+                "- This does not install paxx12 U1 Extended Firmware.",
+                "- This does not modify `extended/klipper` configuration.",
+                "- This does not prove custom firmware behavior on U1 hardware.",
+            ]
+        )
+    return lines
 
 
-def generate(packet_dir: Path, out_dir: Path) -> dict[str, Any]:
+def generate(packet_dir: Path, out_dir: Path, target: str = "generic_fluidd_klipper") -> dict[str, Any]:
+    target_metadata(target)
     schedule, assignments = load_packet(packet_dir)
     tool_map = build_tool_map(schedule, assignments)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    write_text(out_dir / "amp_tools.cfg.template", generate_tools_cfg(tool_map))
-    write_text(out_dir / "amp_macros.cfg.template", generate_macros_cfg())
-    write_text(out_dir / "amp_dry_run_schedule.gcode.txt", generate_dry_run_schedule(schedule))
-    write_text(out_dir / "amp_preflight_checklist.md", generate_preflight_checklist())
-    write_text(out_dir / "amp_safety_report.md", generate_safety_report())
-    write_json(out_dir / "amp_tool_map.json", {"schema_version": "0.1", "tool_map": tool_map})
-    return {"out_dir": str(out_dir), "tool_count": len(tool_map), "step_count": len(schedule.get("schedule", []))}
+    write_text(out_dir / "amp_tools.cfg.template", generate_tools_cfg(tool_map, target))
+    write_text(out_dir / "amp_macros.cfg.template", generate_macros_cfg(target))
+    write_text(out_dir / "amp_dry_run_schedule.gcode.txt", generate_dry_run_schedule(schedule, target))
+    write_text(out_dir / "amp_preflight_checklist.md", generate_preflight_checklist(target))
+    write_text(out_dir / "amp_safety_report.md", generate_safety_report(target))
+    write_json(out_dir / "amp_tool_map.json", {"schema_version": "0.1", "target": target, "tool_map": tool_map})
+    return {"out_dir": str(out_dir), "target": target, "tool_count": len(tool_map), "step_count": len(schedule.get("schedule", []))}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", required=True, help="AMP plan packet directory")
     parser.add_argument("--out", required=True, help="Sandbox output directory")
+    parser.add_argument(
+        "--target",
+        default="generic_fluidd_klipper",
+        choices=sorted(TARGETS),
+        help="Sandbox target metadata to include in generated templates",
+    )
     args = parser.parse_args()
-    result = generate(Path(args.packet), Path(args.out))
+    result = generate(Path(args.packet), Path(args.out), args.target)
     print(f"wrote AMP Fluidd/Klipper sandbox to {result['out_dir']}")
+    print(f"target={result['target']}")
     print(f"tool_count={result['tool_count']} step_count={result['step_count']}")
     return 0
 

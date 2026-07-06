@@ -20,6 +20,7 @@ Adapters:
 | --- | --- | --- |
 | `snapmaker_touchscreen_blocked` | blocked/advisory | Documents why touchscreen-started mixed physical nozzle execution remains blocked. |
 | `snapmaker_fluidd_klipper_experimental` | future experimental | Models the likely U1 experimental path through Fluidd/Klipper. |
+| `paxx12_u1_extended_firmware` | research-only/future experimental | Models the public paxx12 U1 Extended Firmware Fluidd/Klipper include/hook path as a future adapter target. |
 | `generic_klipper_macro` | reference/prototype | Models user-defined Klipper macro execution. |
 | `klipper_ktcc_reference` | reference/prototype | Models KTCC-style tool objects, offsets, parking, heaters, and purge/wipe hooks. |
 | `reprap_firmware_reference` | semantic reference | Models the RepRapFirmware-style T-code lifecycle. |
@@ -64,6 +65,7 @@ Run result:
 | --- | --- | --- |
 | `snapmaker_touchscreen_blocked` | yes | pass |
 | `snapmaker_fluidd_klipper_experimental` | yes | pass |
+| `paxx12_u1_extended_firmware` | yes | pass |
 | `generic_klipper_macro` | yes | pass |
 | `klipper_ktcc_reference` | yes | pass |
 | `reprap_firmware_reference` | yes | pass |
@@ -127,6 +129,7 @@ dry_run_non_comment_lines=0
 | --- | ---: | ---: | ---: |
 | `snapmaker_touchscreen_blocked` | yes | no | no |
 | `snapmaker_fluidd_klipper_experimental` | no | future only | no |
+| `paxx12_u1_extended_firmware` | no | research/future only | no |
 | `generic_klipper_macro` | no | no | yes |
 | `klipper_ktcc_reference` | no | no | yes |
 | `reprap_firmware_reference` | no | no | yes |
@@ -139,6 +142,7 @@ The current emitted set intentionally focuses on:
 
 - Snapmaker blocked/advisory behavior
 - Snapmaker Fluidd/Klipper future experimental behavior
+- paxx12 U1 Extended Firmware Fluidd/Klipper include/hook research behavior
 - generic Klipper macro behavior
 - KTCC-style tool-object behavior
 - RepRapFirmware reference semantics
@@ -147,21 +151,24 @@ The current emitted set intentionally focuses on:
 
 1. Keep Snapmaker touchscreen mixed physical nozzle execution blocked/advisory.
 2. Use Snapmaker Fluidd/Klipper as the first future experimental path after U1 hardware access.
-3. Keep generic Klipper macro and KTCC adapters as practical macro architecture references.
-4. Use RepRapFirmware as the clean semantic reference for the abstract toolchange lifecycle.
-5. Do not emit executable mixed-nozzle commands until hardware validation, explicit developer controls, and safety review exist.
+3. Treat paxx12 U1 Extended Firmware as a concrete research target for future Fluidd/Klipper adapter experiments, not as an install recommendation.
+4. Keep generic Klipper macro and KTCC adapters as practical macro architecture references.
+5. Use RepRapFirmware as the clean semantic reference for the abstract toolchange lifecycle.
+6. Do not emit executable mixed-nozzle commands until hardware validation, explicit developer controls, and safety review exist.
 
 ## What This Proves
 
 - AMP can emit adapter-specific pseudo execution plans from the same offline packet.
 - The adapter layer can separate planning from controller execution semantics.
 - The same schedule can be viewed through blocked, Klipper-style, KTCC-style, and RepRapFirmware-style adapters.
+- The same schedule can be viewed through a paxx12 U1 Extended Firmware comments-only adapter target.
 - The pseudo-emitter can produce schedule, pseudo command, safety, and JSON adapter-plan artifacts without touching slicer behavior.
 
 ## What This Does Not Prove
 
 - This does not implement mixed-nozzle slicing.
 - This does not flash or modify printer firmware.
+- This does not install or recommend custom firmware.
 - This does not generate production `T0`, `T1`, `T2`, or `T3` commands.
 - This does not generate a single mixed-nozzle G-code print.
 - This does not validate physical mixed-nozzle behavior.
