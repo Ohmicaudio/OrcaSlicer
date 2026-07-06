@@ -187,6 +187,52 @@ The probe defines the four-object representation intent:
 | `structural_shell_zone` | 0.6 | `0.24 Standard @Snapmaker U1 (0.6 nozzle)` | 0.24 | 0.62 | 3 |
 | `bulk_zone` | 0.8 | `0.40 Standard @Snapmaker U1 (0.8 nozzle)` | 0.40 | 0.82 | 4 |
 
+## AMP 3MF Sidecar Plan-Bundle Path
+
+AMP now has a sidecar plan-bundle path:
+
+```text
+tools/amp_pack_3mf_plan_bundle.py
+tools/amp_validate_3mf_plan_bundle.py
+docs/benchmarks/AMP_3MF_Sidecar_Plan_Bundle_001.md
+```
+
+Generated ignored bundle:
+
+```text
+outputs/amp_3mf_plan_bundle/amp_multitool_resolution_fixture.amp3mf.zip
+```
+
+The bundle packages:
+
+- separated region STL bodies
+- AMP plan packet JSON
+- tool assignments
+- process queue
+- toolchange schedule
+- per-region G-code status
+- debug artifact
+- risk report
+- adapter target metadata
+- hardware preflight status
+- manifest and file hashes
+
+Validation result:
+
+```text
+passed=true
+errors=0
+warnings=2
+region_count=4
+```
+
+The warnings are intentional:
+
+- bundle is a sidecar authority, not native slicer mixed-profile support
+- hardware preflight remains not_ready
+
+This sidecar bundle is the current authority path. Native 3MF/process preservation still needs GUI/project round-trip testing before AMP can treat it as a slicer-native representation bridge.
+
 ## Round-Trip Test
 
 No automatic 3MF round-trip was performed in this pass.
@@ -225,7 +271,7 @@ Recommended path:
 
 ```text
 AMP packet
--> 3MF plan-bundle sidecar metadata
+-> AMP 3MF sidecar plan bundle
 -> manual GUI object/tool-slot round trip
 -> inspect 3MF reload
 -> inspect exported G-code
