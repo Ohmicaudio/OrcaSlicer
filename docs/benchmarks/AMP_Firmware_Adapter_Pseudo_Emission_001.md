@@ -81,6 +81,46 @@ Every adapter output is comments-only. The pseudo files use advisory lines such 
 
 The pseudo-emitter does not emit executable production tool-selection commands.
 
+## Validator Status
+
+Mechanical output validation was added after the first pseudo-emission pass.
+
+Validator:
+
+```text
+tools/amp_validate_firmware_adapter_outputs.py
+```
+
+Generated ignored reports:
+
+```text
+outputs/amp_firmware_adapter_validation/adapter_validation_report.json
+outputs/amp_firmware_adapter_validation/adapter_validation_report.md
+```
+
+Current validation result:
+
+```text
+passed=true
+errors=0
+warnings=1
+```
+
+The warning is intentional: `klipper_nozzlechange_extra` is treated as research-only/not emitted.
+
+Adapter readiness matrix:
+
+```text
+docs/benchmarks/AMP_Firmware_Adapter_Readiness_Matrix_001.md
+```
+
+Macro sandbox validation status:
+
+```text
+outputs/amp_fluidd_klipper_sandbox/amp_dry_run_schedule.gcode.txt
+dry_run_non_comment_lines=0
+```
+
 ## Adapter Status
 
 | Adapter | Blocked | Experimental | Reference |
