@@ -163,11 +163,58 @@ CMake Error at cmake/modules/Finddraco.cmake:20 (message):
   Draco library not found.  Please install the dependency.
 ```
 
-No Draco config, header, or dependency artifact was found in the reused Snapmaker dependency cache. Because configure still stopped before an executable was produced, no runtime slicing probe was performed.
+No Draco config, header, or dependency artifact was found in the reused Snapmaker dependency cache. Targeted checks for `draco/draco_features.h` were negative in:
+
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps_src`
+- `B:\ohmic\external\OrcaSlicer-multi-nozzle-size-printing\deps_src`
+- prior B-drive Snapmaker/Orca build trees under `B:\ohmic\builds`
+
+Because configure still stopped before an executable was produced, no runtime slicing probe was performed.
+
+## Self-Generated Probe Harness
+
+AMP now owns the probe geometry and inspection harness. We do not need the LixNix author to provide models.
+
+Probe model generator:
+
+`tools/amp_generate_lixnix_probe_models.py`
+
+Ignored generated models:
+
+- `outputs/lixnix_runtime_probe/models/lixnix_two_object_detail_bulk.stl`
+- `outputs/lixnix_runtime_probe/models/lixnix_four_region_tool_ladder.stl`
+- `outputs/lixnix_runtime_probe/models/lixnix_support_restriction_probe.stl`
+- `outputs/lixnix_runtime_probe/models/lixnix_layer_height_probe.stl`
+
+Generated model intent:
+
+- Two-object detail/bulk probe for manual object assignment.
+- Four-region tool ladder for 0.2 / 0.4 / 0.6 / 0.8 style manual assignment.
+- Support restriction probe for `support_nozzle_diameter` behavior.
+- Layer-height probe for per-extruder layer-height behavior.
+
+G-code inspection tool:
+
+`tools/amp_inspect_mixed_nozzle_gcode.py`
+
+Expected future use:
+
+```powershell
+python tools/amp_inspect_mixed_nozzle_gcode.py outputs/lixnix_runtime_probe/gcode --out outputs/lixnix_runtime_probe/reports
+```
+
+The inspector reports nozzle diameter metadata, print settings id, T command counts, active tools, Z/layer-height patterns, per-tool extrusion counts, wipe/purge/support comment hits, line-width comment hits, and warnings when output appears to contain only one tool or one nozzle value.
+
+Checklist:
+
+`docs/research/AMP_LixNix_Self_Generated_Probe_Checklist.md`
 
 ## Runtime Probe Result
 
 No runtime G-code was generated from the LixNix branch in this probe. The second build pass resolved the earlier Boost and Eigen blockers, but configure still failed before producing an executable because Draco was unavailable.
+
+The probe geometry and inspector are now ready for a future run if the LixNix branch can be built.
 
 Not observed:
 
@@ -505,7 +552,7 @@ Recommended next steps:
 
 1. Keep LixNix on the AMP toolchanger watchlist.
 2. Contact the author using `docs/community/AMP_LixNix_Collaboration_Draft.md`.
-3. Ask the LixNix author for a known-good test project, expected G-code fixture, or dependency/build instructions; the local build now stops at missing Draco after Boost and Eigen are resolved.
+3. Ask the LixNix author for intended workflow, expected G-code behavior, and dependency/build instructions; AMP will provide its own probe geometry.
 4. Use LixNix tests as inspiration for future AMP hot-path tests.
 5. Do not start production AMP slicer integration from this fork until U1 safety constraints and AMP's own representation boundary are stronger.
 
