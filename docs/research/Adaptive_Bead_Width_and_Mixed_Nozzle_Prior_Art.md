@@ -91,8 +91,12 @@ Relevant Orca context:
 - OrcaSlicer wiki page describing mixed nozzle setup by extruder: <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes.html>
 - OrcaSlicer issue about missing nozzle-size sidebar UI for non-BBL multi-extruder printers: <https://github.com/OrcaSlicer/OrcaSlicer/issues/14144>
 - OrcaSlicer issue discussing toolchanger multiple nozzle sizes in the same print: <https://github.com/OrcaSlicer/OrcaSlicer/issues/11424>
+- LixNix OrcaSlicer mixed-nozzle fork audit: `docs/research/AMP_LixNix_Multi_Nozzle_Fork_Audit_001.md`
+- LixNix external fork: <https://github.com/LixNix/OrcaSlicer-multi-nozzle-size-printing>
 
 The Orca issues are project/community issue reports, not proof that any particular workflow is safe on U1 hardware.
+
+The LixNix fork is meaningful prior art. The inspected default branch adds mixed-nozzle plumbing around mapped filament/extruder nozzle-diameter lookup, while the `multi_nozzle_multi_layer_height` branch adds per-extruder layer-height configuration, combined-layer behavior, support nozzle restrictions, wipe tower adjustments, and fff_print tests. It still appears to be manual/per-feature or per-extruder assignment rather than a production-level validated automated geometry-driven planner. It has not been physically validated by this project and does not replace U1-specific validation.
 
 ## 4. Academic Prior Art
 
@@ -155,6 +159,7 @@ This means current code is scaffolding, not manufacturing behavior.
 - Mixed physical nozzle setup in slicer profiles.
 - UI/workflow support for multi-extruder nozzle sizes.
 - Wipe/purge cost estimation for mixed tools.
+- Open-source experimental per-extruder mixed-nozzle and per-extruder layer-height slicing paths, as seen in the LixNix fork audit, but not production-level validated for AMP or U1.
 
 ### Open Research Areas For AMP
 
@@ -195,6 +200,7 @@ Stage 1 should remain software-only until the read-only planner boundary is stab
 - OrcaSlicer wiki, "Mixed Nozzle Sizes": <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes.html>
 - OrcaSlicer issue #14144, "No nozzle size selector in the sidebar for non-BBL multi-extruder printers": <https://github.com/OrcaSlicer/OrcaSlicer/issues/14144>
 - OrcaSlicer issue #11424, "Tool Changer multiple nozzle sizes in same print": <https://github.com/OrcaSlicer/OrcaSlicer/issues/11424>
+- LixNix OrcaSlicer multi-nozzle fork: <https://github.com/LixNix/OrcaSlicer-multi-nozzle-size-printing>
 - Snapmaker U1 hot-end guide: <https://wiki.snapmaker.com/en/snapmaker_u1/hot_end_guide>
 - Snapmaker forum community discussion, "Multiple nozzle sizes in the same print?": <https://forum.snapmaker.com/t/multiple-nozzle-sizes-in-the-same-print/42200>
 - Reddit community report, "Tool Changer multiple nozzle sizes in same print": <https://www.reddit.com/r/snapmaker/comments/1p28jgq/tool_changer_multiple_nozzle_sizes_in_same_print/>

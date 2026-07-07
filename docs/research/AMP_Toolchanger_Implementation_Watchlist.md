@@ -71,6 +71,28 @@ AMP relevance:
 
 ## Snapmaker / Orca Watchlist
 
+### LixNix OrcaSlicer Multi-Nozzle Fork
+
+Links:
+
+- <https://github.com/LixNix/OrcaSlicer-multi-nozzle-size-printing>
+- `docs/research/AMP_LixNix_Multi_Nozzle_Fork_Audit_001.md`
+
+What to watch:
+
+- Whether the `multi_nozzle_multi_layer_height` branch keeps developing.
+- Whether per-extruder layer-height support is submitted upstream.
+- How the fork handles project save/load for new PrintConfig keys.
+- Whether generated G-code examples or physical validation results are published.
+- How wipe tower, support, and tool ordering behave with different nozzle sizes.
+
+AMP relevance:
+
+- Useful implementation reference for future behavior-changing C++ work.
+- Confirms that mixed-nozzle support touches Flow, LayerRegion, PerimeterGenerator, ToolOrdering, WipeTower, and PrintConfig.
+- Does not replace AMP's planner, sidecar packet, U1 validation, or Fluidd/Klipper adapter path.
+- Should remain research/watchlist material until it is validated against AMP's safety and U1 constraints.
+
 ### Snapmaker CLI Hardening PRs
 
 Links:
