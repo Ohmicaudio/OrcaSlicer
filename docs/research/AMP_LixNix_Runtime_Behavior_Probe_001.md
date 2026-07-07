@@ -163,12 +163,108 @@ CMake Error at cmake/modules/Finddraco.cmake:20 (message):
   Draco library not found.  Please install the dependency.
 ```
 
-No Draco config, header, or dependency artifact was found in the reused Snapmaker dependency cache. Targeted checks for `draco/draco_features.h` were negative in:
+No Draco config, header, or dependency artifact was found in the reused Snapmaker dependency cache. Targeted checks for `draco/draco_features.h`, `draco.lib`, `draco.dll`, and Draco CMake config files were negative in:
 
 - `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local`
 - `B:\ohmic\Snapmaker-OrcaSlicer\deps_src`
 - `B:\ohmic\external\OrcaSlicer-multi-nozzle-size-printing\deps_src`
 - prior B-drive Snapmaker/Orca build trees under `B:\ohmic\builds`
+
+The external LixNix dependency recipe does include Draco:
+
+`B:\ohmic\external\OrcaSlicer-multi-nozzle-size-printing\deps\Draco\Draco.cmake`
+
+The recipe downloads Draco `1.5.7` from:
+
+`https://github.com/google/draco/archive/refs/tags/1.5.7.zip`
+
+### Bounded Draco Resolution Attempt
+
+A bounded dependency-only build was attempted in:
+
+`B:\ohmic\external_builds\lixnix_deps_draco_only`
+
+Dependency configure command:
+
+```powershell
+B:\ohmic\tools\cmake-3.31.8-windows-x86_64\bin\cmake.exe `
+  -S B:\ohmic\external\OrcaSlicer-multi-nozzle-size-printing\deps `
+  -B B:\ohmic\external_builds\lixnix_deps_draco_only `
+  -G "Visual Studio 17 2022" `
+  -A x64 `
+  -DDEP_DOWNLOAD_DIR="B:/ohmic/external/OrcaSlicer-multi-nozzle-size-printing/deps/DL_CACHE"
+```
+
+Targeted dependency build command:
+
+```powershell
+B:\ohmic\tools\cmake-3.31.8-windows-x86_64\bin\cmake.exe `
+  --build B:\ohmic\external_builds\lixnix_deps_draco_only `
+  --config Release `
+  --target dep_Draco `
+  -- /m:4
+```
+
+Result:
+
+- `dep_Draco` built and installed successfully.
+- CMake version used: `3.31.8`
+- MSVC version reported by configure: `19.44.35209.0`
+
+Installed Draco artifacts:
+
+- `B:\ohmic\external_builds\lixnix_deps_draco_only\OrcaSlicer_dep\usr\local\include\draco\draco_features.h`
+- `B:\ohmic\external_builds\lixnix_deps_draco_only\OrcaSlicer_dep\usr\local\lib\draco.lib`
+- `B:\ohmic\external_builds\lixnix_deps_draco_only\OrcaSlicer_dep\usr\local\share\cmake\draco\draco-config.cmake`
+- `B:\ohmic\external_builds\lixnix_deps_draco_only\OrcaSlicer_dep\usr\local\share\cmake\draco\draco-targets.cmake`
+
+### Configure Retry With Draco
+
+Main LixNix configure was retried in:
+
+`B:\ohmic\external_builds\lixnix_multi_nozzle_probe_with_draco_q2`
+
+Command attempted:
+
+```powershell
+B:\ohmic\tools\cmake-3.31.8-windows-x86_64\bin\cmake.exe `
+  -S B:\ohmic\external\OrcaSlicer-multi-nozzle-size-printing `
+  -B B:\ohmic\external_builds\lixnix_multi_nozzle_probe_with_draco_q2 `
+  -G "Visual Studio 17 2022" `
+  -A x64 `
+  -DCMAKE_PREFIX_PATH="B:/ohmic/Snapmaker-OrcaSlicer/deps/build/OrcaSlicer_dep/usr/local;B:/ohmic/external_builds/lixnix_deps_draco_only/OrcaSlicer_dep/usr/local" `
+  -DCMAKE_MODULE_PATH="B:/ohmic/Snapmaker-OrcaSlicer/deps/build/OrcaSlicer_dep/usr/local/lib/cmake/CGAL" `
+  -DEIGEN3_INCLUDE_DIR="B:/ohmic/Snapmaker-OrcaSlicer/deps_src/eigen"
+```
+
+Result:
+
+- The previous Draco blocker was resolved.
+- Configure progressed past Boost, Eigen, OpenVDB, CGAL, OpenCV, JPEG, Draco, GMP, and MPFR.
+- Configure then stopped on later dependency configuration issues before an executable was produced.
+
+Remaining blockers observed:
+
+```text
+CMake Error at B:/ohmic/Snapmaker-OrcaSlicer/deps/build/dep_OCCT-prefix/src/dep_OCCT-build/OpenCASCADEConfig.cmake:95 (include):
+  include could not find requested file:
+    OpenCASCADEFoundationClassesTargets.cmake
+    OpenCASCADEModelingDataTargets.cmake
+    OpenCASCADEModelingAlgorithmsTargets.cmake
+    OpenCASCADEVisualizationTargets.cmake
+    OpenCASCADEApplicationFrameworkTargets.cmake
+    OpenCASCADEDataExchangeTargets.cmake
+```
+
+```text
+CMake Error at src/CMakeLists.txt:36 (find_package):
+  Could not find a package configuration file provided by "wxWidgets"
+  (requested version 3.3)
+```
+
+Interpretation:
+
+Draco is no longer the current blocker after the targeted dependency build. Runtime probing remains blocked because the reused Snapmaker dependency prefix does not provide a cleanly reusable OpenCASCADE/wxWidgets configuration for this external LixNix configure.
 
 Because configure still stopped before an executable was produced, no runtime slicing probe was performed.
 
@@ -212,7 +308,7 @@ Checklist:
 
 ## Runtime Probe Result
 
-No runtime G-code was generated from the LixNix branch in this probe. The second build pass resolved the earlier Boost and Eigen blockers, but configure still failed before producing an executable because Draco was unavailable.
+No runtime G-code was generated from the LixNix branch in this probe. The bounded Draco attempt resolved the earlier Draco blocker by building `dep_Draco` from the LixNix dependency recipe, but configure still failed before producing an executable because later OpenCASCADE and wxWidgets dependency configuration issues remained.
 
 The probe geometry and inspector are now ready for a future run if the LixNix branch can be built.
 
@@ -552,7 +648,7 @@ Recommended next steps:
 
 1. Keep LixNix on the AMP toolchanger watchlist.
 2. Contact the author using `docs/community/AMP_LixNix_Collaboration_Draft.md`.
-3. Ask the LixNix author for intended workflow, expected G-code behavior, and dependency/build instructions; AMP will provide its own probe geometry.
+3. Ask the LixNix author for intended workflow, expected G-code behavior, and Windows dependency/build instructions, especially whether the branch expects a full Orca dependency build rather than a mixed reused dependency prefix; AMP will provide its own probe geometry.
 4. Use LixNix tests as inspiration for future AMP hot-path tests.
 5. Do not start production AMP slicer integration from this fork until U1 safety constraints and AMP's own representation boundary are stronger.
 

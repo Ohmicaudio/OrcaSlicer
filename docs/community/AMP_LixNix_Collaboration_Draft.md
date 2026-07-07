@@ -25,7 +25,7 @@ A few questions, if you are open to comparing notes:
 4. Have you physically tested the branch on H2D/X2D or other hardware, or is it currently source/test validation only?
 5. Are there specific edge cases around wipe tower, support, or combined layers that you already know need more testing?
 6. Are there expected-output fixtures for the new fff_print tests, or is the test suite currently the best behavior reference?
-7. Do you have recommended Windows dependency/build instructions for the current branch? I was able to reuse an Orca dependency prefix for Boost and Eigen, but my local configure currently stops at a missing Draco dependency before producing an executable.
+7. Do you have recommended Windows dependency/build instructions for the current branch? I was able to reuse an Orca dependency prefix for Boost and Eigen, and I built the branch's Draco 1.5.7 dependency recipe separately, but my local configure then stops on OpenCASCADE target-file and wxWidgets package configuration issues before producing an executable.
 
 For AMP, I am keeping this as research only for now. I am not merging or copying code into the Snapmaker branch. The immediate goal is to understand the implementation shape and make sure our planner/packet/adapter architecture stays compatible with real slicer constraints.
 
