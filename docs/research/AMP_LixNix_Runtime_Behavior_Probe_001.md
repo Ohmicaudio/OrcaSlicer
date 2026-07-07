@@ -46,9 +46,15 @@ No dedicated mixed-nozzle or per-extruder layer-height usage guide was found in 
 
 ## Build Result
 
-Build/configure was attempted in an external build directory:
+Build/configure was attempted in external build directories:
 
 `B:\ohmic\external_builds\lixnix_multi_nozzle_probe`
+
+`B:\ohmic\external_builds\lixnix_multi_nozzle_probe_reuse_deps`
+
+`B:\ohmic\external_builds\lixnix_multi_nozzle_probe_reuse_deps_eigen_module`
+
+`B:\ohmic\external_builds\lixnix_multi_nozzle_probe_reuse_deps_eigen_include`
 
 Command attempted:
 
@@ -79,11 +85,89 @@ version 1.83.0) with any of the following names:
   boost-config.cmake
 ```
 
-Because configure stopped before an executable was produced, no runtime slicing probe was performed.
+### Dependency Reuse Retry
+
+The existing Snapmaker Orca dependency prefix was then reused:
+
+`B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local`
+
+Command attempted:
+
+```powershell
+cmake -S B:\ohmic\external\OrcaSlicer-multi-nozzle-size-printing `
+      -B B:\ohmic\external_builds\lixnix_multi_nozzle_probe_reuse_deps `
+      -G "Visual Studio 17 2022" `
+      -A x64 `
+      -DCMAKE_PREFIX_PATH="B:/ohmic/Snapmaker-OrcaSlicer/deps/build/OrcaSlicer_dep/usr/local"
+```
+
+Result:
+
+- Boost blocker resolved using Boost `1.84.0` from the Snapmaker dependency cache.
+- Configure then stopped at missing Eigen3 package config.
+
+Observed Eigen blocker:
+
+```text
+Could not find a package configuration file provided by "Eigen3" (requested
+version 5.0.1)
+```
+
+### Eigen Module Retry
+
+The CGAL-provided `FindEigen3.cmake` module from the existing dependency prefix was then added:
+
+`B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\cmake\CGAL`
+
+Result:
+
+- CMake found the Eigen module.
+- Configure then stopped because `EIGEN3_INCLUDE_DIR` was unset.
+
+Observed Eigen include blocker:
+
+```text
+Could NOT find Eigen3 (missing: EIGEN3_INCLUDE_DIR) (Required is at least
+version "5.0.1")
+```
+
+### Eigen Include Retry
+
+The existing Eigen source include root was then passed explicitly:
+
+`B:\ohmic\Snapmaker-OrcaSlicer\deps_src\eigen`
+
+Command attempted:
+
+```powershell
+cmake -S B:\ohmic\external\OrcaSlicer-multi-nozzle-size-printing `
+      -B B:\ohmic\external_builds\lixnix_multi_nozzle_probe_reuse_deps_eigen_include `
+      -G "Visual Studio 17 2022" `
+      -A x64 `
+      -DCMAKE_PREFIX_PATH="B:/ohmic/Snapmaker-OrcaSlicer/deps/build/OrcaSlicer_dep/usr/local" `
+      -DCMAKE_MODULE_PATH="B:/ohmic/Snapmaker-OrcaSlicer/deps/build/OrcaSlicer_dep/usr/local/lib/cmake/CGAL" `
+      -DEIGEN3_INCLUDE_DIR="B:/ohmic/Snapmaker-OrcaSlicer/deps_src/eigen"
+```
+
+Result:
+
+- Boost resolved.
+- Eigen resolved.
+- Configure progressed through OpenVDB, CGAL, OpenCV, JPEG, GMP, MPFR, and other dependencies.
+- Configure then stopped at missing Draco.
+
+Final blocker:
+
+```text
+CMake Error at cmake/modules/Finddraco.cmake:20 (message):
+  Draco library not found.  Please install the dependency.
+```
+
+No Draco config, header, or dependency artifact was found in the reused Snapmaker dependency cache. Because configure still stopped before an executable was produced, no runtime slicing probe was performed.
 
 ## Runtime Probe Result
 
-No runtime G-code was generated from the LixNix branch in this probe.
+No runtime G-code was generated from the LixNix branch in this probe. The second build pass resolved the earlier Boost and Eigen blockers, but configure still failed before producing an executable because Draco was unavailable.
 
 Not observed:
 
@@ -421,7 +505,7 @@ Recommended next steps:
 
 1. Keep LixNix on the AMP toolchanger watchlist.
 2. Contact the author using `docs/community/AMP_LixNix_Collaboration_Draft.md`.
-3. If future time allows, install/configure the external fork dependencies and rerun this probe with an executable.
+3. Ask the LixNix author for a known-good test project, expected G-code fixture, or dependency/build instructions; the local build now stops at missing Draco after Boost and Eigen are resolved.
 4. Use LixNix tests as inspiration for future AMP hot-path tests.
 5. Do not start production AMP slicer integration from this fork until U1 safety constraints and AMP's own representation boundary are stronger.
 
