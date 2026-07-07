@@ -77,38 +77,38 @@
     {
       "check_id": "FW-EXT-002",
       "category": "firmware_path",
-      "description": "Firmware source and version are recorded.",
+      "description": "Firmware source, version, and source audit commit are recorded.",
       "required": true,
       "status_default": "pending",
       "failure_action": "Stop until firmware source and version are documented.",
-      "evidence_required": "Repository URL, release/tag/version, and machine firmware note."
+      "evidence_required": "Repository URL, release/tag/version, inspected source commit, and machine firmware note."
     },
     {
       "check_id": "FW-EXT-003",
       "category": "firmware_path",
-      "description": "Recovery method is known before any custom firmware configuration work.",
+      "description": "Recovery method is known before any custom firmware configuration work, including extended-recover/full-recover behavior.",
       "required": true,
       "status_default": "pending",
       "failure_action": "Stop until recovery path is documented.",
-      "evidence_required": "Recovery procedure reference or operator note."
+      "evidence_required": "Recovery procedure reference or operator note covering extended-recover.txt and full-recover.txt."
     },
     {
       "check_id": "FW-EXT-004",
       "category": "firmware_path",
-      "description": "The extended/klipper include path is confirmed on the target hardware.",
+      "description": "The extended/klipper include path is confirmed on the target hardware and placeholder files remain untouched.",
       "required": true,
       "status_default": "pending",
       "failure_action": "Do not prepare hardware-side macros until include path is verified.",
-      "evidence_required": "Fluidd/Mainsail configuration screenshot, file listing, or operator note."
+      "evidence_required": "Fluidd/Mainsail configuration screenshot, file listing, or operator note confirming extended/klipper/*.cfg and untouched 00_keep.cfg."
     },
     {
       "check_id": "FW-EXT-005",
       "category": "firmware_path",
-      "description": "Macros are reviewed before any installation attempt.",
+      "description": "Macros and paxx12 hook names are reviewed before any installation attempt.",
       "required": true,
       "status_default": "pending",
       "failure_action": "Do not install or load AMP macro files.",
-      "evidence_required": "Reviewed macro diff or signed operator note."
+      "evidence_required": "Reviewed macro diff or signed operator note confirming _PRINT_START_, _PRINT_END_, and _CANCEL_PRINT_ hook prefixes."
     },
     {
       "check_id": "FW-EXT-006",

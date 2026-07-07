@@ -21,6 +21,15 @@ The goal is to model a concrete U1 Fluidd/Klipper execution-adapter target while
 - Klipper hook docs: [PRINT_START / PRINT_END / CANCEL_PRINT hooks](https://snapmakeru1-extended-firmware.pages.dev/klipper_hooks)
 - Firmware config docs: [Firmware configuration interface](https://snapmakeru1-extended-firmware.pages.dev/firmware_config)
 
+Local source audit snapshot inspected on 2026-07-07:
+
+```text
+local clone: B:\ohmic\external\SnapmakerU1-Extended-Firmware
+branch: develop
+commit: c7a4e66b973f98055e25d865e71a96ebccbd4a07
+describe: v1.4.1-paxx12-20-2-gc7a4e66
+```
+
 ## Relevant Capabilities
 
 The public docs make this a concrete AMP research target because they describe:
@@ -33,6 +42,16 @@ The public docs make this a concrete AMP research target because they describe:
   - `_PRINT_END_`
   - `_CANCEL_PRINT_`
 - recovery considerations for invalid Klipper/Moonraker configuration
+
+The source audit confirmed the exact source paths behind those capabilities:
+
+| Capability | Source path |
+| --- | --- |
+| Klipper custom include | `overlays/firmware-extended/02-firmware-config/patches/01-add-klipper-includes.patch` |
+| Moonraker custom include | `overlays/firmware-extended/02-firmware-config/patches/01-add-moonraker-includes.patch` |
+| Print lifecycle hooks | `overlays/firmware-extended/35-feature-klipper-hooks/patches/home/lava/origin_printer_data/config/01-klipper-hooks.patch` |
+| USB extended/full recovery | `overlays/firmware-extended/02-firmware-config/root/etc/init.d/S49extended-config` |
+| Firmware Config service | `overlays/firmware-extended/02-firmware-config/root/etc/init.d/S99firmware-config` |
 
 ## Manifest Entry
 
@@ -123,6 +142,21 @@ _CANCEL_PRINT_AMP_ABORT
 ```
 
 The generated files remain templates/dry-run artifacts. They do not contain motion, heating, extrusion, real toolchange commands, or production G-code.
+
+Source-grounded mapping:
+
+| Generated artifact | Future paxx12 path | Current install status |
+| --- | --- | --- |
+| `amp_tools.cfg.template` | `extended/klipper/amp_tools.cfg` | Do not install; future reviewed target only |
+| `amp_macros.cfg.template` | `extended/klipper/amp_macros.cfg` | Do not install; future reviewed target only |
+| `amp_dry_run_schedule.gcode.txt` | No direct install path | Offline review only |
+| `amp_tool_map.json` | External AMP metadata | Not a Klipper include file |
+| `amp_preflight_checklist.md` | Operator record | Documentation only |
+| `amp_safety_report.md` | Operator record | Documentation only |
+
+The paxx12 source audit found U1 extruder naming through faulty-toolhead and
+AFC-lite configs (`extruder`, `extruder1`, `extruder2`, `extruder3`), but did
+not identify an official AMP-ready mixed-nozzle execution interface.
 
 ## Validation Result
 

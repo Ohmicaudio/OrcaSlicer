@@ -62,12 +62,31 @@ Avoid 0.2 mm nozzles with PETG-CF, PETG-GF, Wood, or TPU unless separately valid
 
 The `paxx12_u1_extended_firmware` adapter is a concrete Fluidd/Klipper research target only. It is not installed, flashed, or recommended by AMP.
 
+Local source snapshot audited:
+
+```text
+repo: https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware
+branch: develop
+commit: c7a4e66b973f98055e25d865e71a96ebccbd4a07
+describe: v1.4.1-paxx12-20-2-gc7a4e66
+```
+
+Source-confirmed future paths:
+
+- `extended/klipper/*.cfg` is included from patched `printer.cfg`
+- `extended/moonraker/*.cfg` is included from patched `moonraker.conf`
+- `PRINT_START`, `PRINT_END`, and `CANCEL_PRINT` hooks are dispatched by patched `fluidd.cfg`
+- hook prefixes are `_PRINT_START_`, `_PRINT_END_`, and `_CANCEL_PRINT_`
+- `extended-recover.txt` and `full-recover.txt` USB triggers are handled by `S49extended-config`
+
 Before any future hardware experiment can be considered:
 
 - confirm whether custom firmware is actually present on the test machine
 - record the firmware source and version
 - confirm the recovery method before any configuration work
 - confirm the `extended/klipper` include path on hardware
+- confirm `extended/klipper/00_keep.cfg` and `extended/moonraker/00_keep.cfg` are not modified or removed
+- confirm AMP hook macro names match the source-confirmed prefixes
 - review every macro before any installation attempt
 - do not install generated sandbox files without human review
 - keep the paxx12 adapter `research_only` until hardware evidence exists
@@ -111,6 +130,16 @@ The preflight gate requires explicit evidence before any status can change from 
 - non-extruding dry-run evidence
 - emergency stop confirmation
 - material/nozzle compatibility evidence
+
+## Source-Grounded Artifact Mapping
+
+| AMP artifact | Future paxx12 path | Current status |
+| --- | --- | --- |
+| `amp_tools.cfg.template` | `extended/klipper/amp_tools.cfg` | Offline template only |
+| `amp_macros.cfg.template` | `extended/klipper/amp_macros.cfg` | Offline template only |
+| `amp_dry_run_schedule.gcode.txt` | No direct install path | Offline review only |
+| `amp_tool_map.json` | External AMP metadata | Not a Klipper include file |
+| Future Moonraker status config | `extended/moonraker/amp_status.cfg`, only if justified | Not part of first sandbox |
 
 ## Non-Claims
 

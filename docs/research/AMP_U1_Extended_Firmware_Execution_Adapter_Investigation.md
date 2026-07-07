@@ -23,6 +23,19 @@ This is research only. AMP does not install firmware, flash firmware, emit execu
 
 Observed on 2026-07-06, the public GitHub project described itself as a custom Snapmaker U1 firmware project that enables debug features such as SSH access and additional capabilities. The project also states that it is independent from Snapmaker and includes warranty/recovery risk warnings for custom firmware use.
 
+Local source audit snapshot inspected on 2026-07-07:
+
+```text
+local clone: B:\ohmic\external\SnapmakerU1-Extended-Firmware
+branch: develop
+commit: c7a4e66b973f98055e25d865e71a96ebccbd4a07
+describe: v1.4.1-paxx12-20-2-gc7a4e66
+```
+
+Detailed audit record:
+
+- [AMP_U1_Extended_Firmware_Source_Audit_001.md](AMP_U1_Extended_Firmware_Source_Audit_001.md)
+
 ## Relevant Public Capabilities
 
 The public docs describe these capabilities relevant to AMP adapter research:
@@ -39,6 +52,14 @@ The public docs describe these capabilities relevant to AMP adapter research:
   - `_CANCEL_PRINT_`
 - the docs recommend placing hook macros in loaded configuration files, including under `extended/klipper/`
 - the firmware config page exposes Fluidd/Mainsail selection when the relevant advanced access is available
+
+The source audit confirmed the corresponding patch/config paths:
+
+- `01-add-klipper-includes.patch` adds `[include extended/klipper/*.cfg]` to `/home/lava/origin_printer_data/config/printer.cfg`
+- `01-add-moonraker-includes.patch` adds `[include extended/moonraker/*.cfg]` to `/home/lava/origin_printer_data/config/moonraker.conf`
+- `01-klipper-hooks.patch` adds hook dispatch to `fluidd.cfg`
+- `S49extended-config` manages default extended config copy and USB recovery triggers
+- `S99firmware-config` exposes the Firmware Config service when enabled
 
 ## AMP Adapter Interpretation
 
@@ -59,6 +80,22 @@ future hooks:
 ```
 
 This lets AMP test the shape of a future execution adapter without making the artifact executable.
+
+## Source-Grounded Sandbox Mapping
+
+| AMP sandbox artifact | Future paxx12 path | Status |
+| --- | --- | --- |
+| `amp_tools.cfg.template` | `extended/klipper/amp_tools.cfg` | Future reviewed target only |
+| `amp_macros.cfg.template` | `extended/klipper/amp_macros.cfg` | Future reviewed target only |
+| `amp_dry_run_schedule.gcode.txt` | No direct install path | Offline review artifact only |
+| `amp_tool_map.json` | External AMP metadata | Not a Klipper include file |
+| `amp_preflight_checklist.md` | Operator record | Documentation only |
+| `amp_safety_report.md` | Operator record | Documentation only |
+| Future status config | `extended/moonraker/amp_status.cfg`, only if justified | Not needed for first sandbox |
+
+The source audit did not identify an official paxx12 mixed-nozzle tool
+assignment API, per-tool nozzle metadata contract, or AMP-ready toolchange
+scheduler.
 
 ## Safety Boundary
 
