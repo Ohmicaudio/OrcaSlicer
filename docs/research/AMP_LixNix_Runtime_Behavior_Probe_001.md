@@ -404,20 +404,136 @@ Checklist:
 
 ## Runtime Probe Result
 
-No runtime G-code was generated from the LixNix branch in this probe. The bounded Draco attempt resolved the earlier Draco blocker by building `dep_Draco` from the LixNix dependency recipe. A later no-GUI configure attempt also avoided the OpenCASCADE and wxWidgets blockers, but CMake generation still failed before producing an executable because `Eigen3::Eigen` was not available as an imported target.
+### Build Status Update
 
-The probe geometry and inspector are now ready for a future run if the LixNix branch can be built.
+The external LixNix branch was eventually built far enough to produce a runnable Windows executable for local probing.
 
-Not observed:
+Runnable probe executable:
 
-- G-code header behavior
-- emitted `T0` / `T1` / `T2` / `T3` sequences
-- actual layer-height changes in exported G-code
-- actual wipe tower geometry
-- 3MF save/load persistence
-- physical print behavior
+`B:\ohmic\external_builds\lixnix_runtime_probe\run_direct\orca-slicer.exe`
 
-This means the probe cannot claim that LixNix emits validated mixed-nozzle G-code. The source and tests indicate intended behavior, but runtime output remains unverified locally.
+Build source branch:
+
+`multi_nozzle_multi_layer_height`
+
+Build source commit:
+
+`944da137d8b36427c6659d83148a149e6c6eaa1e`
+
+Important build caveat:
+
+The GUI app build required an external-probe-only linker workaround, `/FORCE:MULTIPLE`, because the mixed dependency set produced duplicate JPEG symbols from `libjpeg-turbo.lib` and `jpeg-static.lib`. This is not an upstreamable build fix and was used only to enable runtime inspection.
+
+Additional build fixes/conditions discovered:
+
+- LixNix needs Eigen available as an imported `Eigen3::Eigen` target.
+- A targeted Eigen 5.0.1 install was used for the successful build path.
+- A targeted Draco dependency build resolved the earlier missing-Draco blocker.
+- CGAL 5.6.3 was used.
+- The Windows build needed explicit `/DWIN32=1` and `/EHsc` in the successful local configuration.
+- Keeping `CMAKE_PREFIX_PATH` focused on the Snapmaker dependency prefix avoided the earlier OpenCASCADE path confusion.
+- wxWidgets 3.3.2 had to be built from the LixNix dependency recipe for the GUI target.
+
+### Single-Model Control
+
+A direct single-model CLI control exported G-code successfully.
+
+Output:
+
+`B:\ohmic\external_builds\lixnix_runtime_probe\gcode\direct_single_model_control_0p10_abs_0p84_bridge_0p2_layer_g92\plate_1.gcode`
+
+Observed:
+
+- CLI exit code: `0`
+- G-code exported.
+- Header reported `OrcaSlicer 2.5.0-dev`.
+- `;HEIGHT:0.1` markers were present.
+- Width comments reflected the scratch process settings.
+- Only one filament/tool was active in this control.
+
+Interpretation:
+
+The executable is runnable and can export G-code from the external branch. This control does not prove mixed-nozzle output.
+
+### Four-Object Assemble-List Probe
+
+The first four-object assemble-list probe used the AMP-generated four-region tool-ladder geometry. It initially failed because one object was placed partly outside the bed.
+
+Observed failure:
+
+```text
+plate 1, object bbox: min {-45, -55, 0} - max {170, 87, 62}
+plate 1: Found Object lixnix_four_region_tool_ladder_1 partly inside, can not be sliced.
+```
+
+The shifted four-object retry entered the slicer but opened a GUI window and did not complete as a clean CLI job in the bounded runtime window. That run was stopped and not treated as a valid result.
+
+Interpretation:
+
+The four-object probe remains useful, but it is too large/flaky for first-pass runtime proof. The smaller two-object probes below produced clearer data.
+
+### Two-Object 0.4 / 0.8 Runtime Probe
+
+A reduced two-object probe was run with scratch-only external configs:
+
+- tool/extruder 1: `0.4` nozzle-class proxy
+- tool/extruder 2: `0.8` nozzle-class proxy
+- manual filament map: `1,2`
+- generated G-code outputs kept outside the repo under `B:\ohmic\external_builds`
+
+The first reduced run failed with:
+
+```text
+Line width too small
+```
+
+Root cause:
+
+The machine config still included the `0.2` tool. LixNix validation considered the smallest nozzle in the mixed machine when checking line/bridge constraints, so a reduced 0.4/0.8 probe needed a scratch 0.4/0.8-only machine config.
+
+The 0.4/0.8 scratch machine then failed once with:
+
+```text
+CLI_PROCESS_NOT_COMPATIBLE
+```
+
+Root cause:
+
+The scratch process lacked `compatible_printers`. Adding `compatible_printers: ["MyToolChanger 0.4 nozzle"]` allowed the probe to proceed.
+
+Successful two-object outputs:
+
+- `B:\ohmic\external_builds\lixnix_runtime_probe\gcode\assemble_two_object_0p4_0p8_probe_compatible\plate_1.gcode`
+- `B:\ohmic\external_builds\lixnix_runtime_probe\gcode\assemble_two_object_0p4_0p8_probe_manual_map\plate_1.gcode`
+- `B:\ohmic\external_builds\lixnix_runtime_probe\gcode\assemble_two_object_0p4_0p8_probe_variant_filaments\plate_1.gcode`
+- `B:\ohmic\external_builds\lixnix_runtime_probe\gcode\direct_two_model_0p4_0p8_load_filament_ids\plate_1.gcode`
+
+Observed in exported G-code:
+
+- G-code export succeeded with exit code `0`.
+- Width comments such as `;WIDTH:0.42` and `;WIDTH:0.84` were observed in assemble-list probes.
+- Layer-height comments included values around `0.2` and occasional `0.4` combined-layer markers.
+- Direct two-model input with `--load-filament-ids 1,2` also exported successfully.
+
+Not observed in exported G-code:
+
+- No plain `T0`, `T1`, `T2`, or `T3` tool-change commands were observed in the tested CLI outputs.
+- Headers still reported `; filament: 1` in the tested outputs.
+- No multi-nozzle `nozzle_diameter` header metadata suitable for U1 validation was observed.
+
+Additional source/log finding:
+
+LixNix does not treat different `nozzle_diameter` values alone as enough to mark extruders different. The branch's `support_different_extruders()` path checks `extruder_variant_list` diversity. Adding scratch variant metadata made the log report:
+
+```text
+extruder_count=2, different_extruder=1
+```
+
+Even with manual filament mapping and variant-mapped scratch filament profiles, the CLI outputs tested here still did not emit observable `T` tool-change commands.
+
+Interpretation:
+
+The runtime probe confirms that the LixNix branch can build and can emit G-code that reflects different width/layer behavior under scratch mixed-extruder configurations. It does not yet prove real mixed-nozzle tool-change G-code emission from the tested CLI paths.
 
 ## Source-Level Behavior Map
 
@@ -645,9 +761,24 @@ If AMP later enters the slicer hot path, it should add fff_print-style tests bef
 
 ## G-code Findings
 
-No generated G-code was observed.
+Generated G-code was observed after the external branch was built locally.
 
-Source-level findings suggest:
+Observed:
+
+- Single-model control G-code exported successfully.
+- Two-object 0.4/0.8 scratch probes exported successfully.
+- Width comments changed according to the scratch process/object settings.
+- Layer-height comments included normal `0.2` values and occasional `0.4` combined-layer markers.
+- LixNix logs showed manual filament-map mode when `--filament-map-mode Manual --filament-map 1,2` was supplied.
+- LixNix logs showed `different_extruder=1` after scratch `extruder_variant_list` metadata was added.
+
+Not observed:
+
+- No `T0` / `T1` / `T2` / `T3` tool-change commands were observed in the tested CLI G-code outputs.
+- Header metadata still reported a single filament in the tested outputs.
+- No U1-compatible mixed-nozzle header behavior was observed.
+
+Source-level findings still suggest:
 
 - multiple nozzle diameters can influence flow and support calculations
 - tool ordering is modified for combined layers and support restrictions
@@ -655,8 +786,9 @@ Source-level findings suggest:
 
 Unproven:
 
-- exact emitted tool commands
-- generated header shape
+- exact emitted tool commands for a fully configured LixNix mixed-nozzle workflow
+- whether the branch requires GUI/project setup rather than CLI assemble-list/direct-model setup for true tool changes
+- generated header shape for a confirmed multi-tool output
 - whether multiple `nozzle_diameter` values appear in a way compatible with U1 or another target printer
 - whether a generated project can round-trip through save/load and preserve these settings
 
@@ -686,20 +818,20 @@ Comparison to AMP:
 | Support nozzle restrictions | Implemented. | Offline category only. | AMP does not route support in slicer. | Support should remain its own planning class. |
 | Wipe tower/purge handling | Implemented at source level. | Sandbox/adapter only, no slicer wipe tower. | AMP does not modify wipe tower. | Future execution needs nozzle-aware purge math. |
 | 3MF/project preservation | Not verified; likely normal config persistence only. | Sidecar plan bundle exists. | Neither path is proven as final U1 representation. | Sidecar remains useful for planner metadata. |
-| G-code toolchange emission | Not runtime-verified; source changes tool ordering. | No production G-code changes. | AMP intentionally lacks production emission. | Do not shortcut into output without validation. |
+| G-code toolchange emission | Runtime probe exported G-code, but tested CLI paths did not emit observable `T` tool-change commands. Source changes tool ordering. | No production G-code changes. | AMP intentionally lacks production emission. | Do not shortcut into output without validation. |
 | Safety/nozzle validation | Not U1-specific. | U1 validation remains blocked/gated. | LixNix does not solve U1 touchscreen constraints. | Keep U1 hardware gates. |
-| Tests | fff_print tests added. | Focused AMP unit/offline tests exist. | Runtime probe blocked locally. | Study test patterns before hot-path AMP work. |
+| Tests | fff_print tests added. | Focused AMP unit/offline tests exist. | Runtime probe is partial: export works, true tool-change emission is unconfirmed. | Study test patterns before hot-path AMP work. |
 | Hardware validation | Not found in repo docs. | Not yet available for U1 mixed nozzle. | Both remain hardware-unvalidated for U1. | No physical claims. |
 
 ## Required Conclusions
 
 ### Does LixNix emit real mixed-nozzle G-code?
 
-Not proven by this probe. The branch modifies source paths that should affect mixed-nozzle slicing, tool ordering, and wipe tower behavior, but no local executable was produced and no G-code was inspected.
+Not proven by this probe. A local executable was produced and G-code was inspected, but the tested CLI paths did not emit observable `T0` / `T1` / `T2` / `T3` tool-change commands. The branch does emit G-code with different width/layer behavior under scratch mixed-extruder configurations, and logs can report `different_extruder=1`, but true mixed-nozzle tool-change output remains unconfirmed.
 
 ### Does it preserve multiple nozzle diameters in headers/project data?
 
-Not proven. The branch uses normal config keys and per-extruder values. Project persistence and header behavior require runtime tests.
+Not proven. Runtime G-code headers inspected in this probe still reported a single filament and did not expose a U1-useful multi-nozzle header shape. The branch uses normal config keys and per-extruder values, but project persistence and header behavior still require a dedicated save/load or GUI workflow test.
 
 ### Does it implement per-extruder layer height?
 
@@ -744,10 +876,12 @@ Recommended next steps:
 
 1. Keep LixNix on the AMP toolchanger watchlist.
 2. Contact the author using `docs/community/AMP_LixNix_Collaboration_Draft.md`.
-3. Ask the LixNix author for intended workflow, expected G-code behavior, and Windows dependency/build instructions, especially whether the branch expects a full Orca dependency build rather than a mixed reused dependency prefix and what Eigen package/config setup provides `Eigen3::Eigen`; AMP will provide its own probe geometry.
-4. Use LixNix tests as inspiration for future AMP hot-path tests.
-5. Do not start production AMP slicer integration from this fork until U1 safety constraints and AMP's own representation boundary are stronger.
+3. Ask the LixNix author for the intended mixed-nozzle workflow, especially whether true tool-change G-code is expected through GUI/project setup, CLI direct input, assemble-list input, or another path.
+4. Ask which config fields are required for a confirmed mixed-tool output, including `filament_map`, `filament_map_mode`, `extruder_variant_list`, `filament_extruder_variant`, and any project-only metadata.
+5. Ask for expected G-code examples or test outputs if available; AMP will provide its own probe geometry.
+6. Use LixNix tests as inspiration for future AMP hot-path tests.
+7. Do not start production AMP slicer integration from this fork until U1 safety constraints and AMP's own representation boundary are stronger.
 
 Bottom line:
 
-The LixNix branch is the most concrete external mixed-nozzle slicer-infrastructure example found so far. It strengthens AMP's direction rather than replacing it: LixNix shows how hard execution becomes inside slicer internals, while AMP remains the planner, packet, sidecar, and gated-execution layer.
+The LixNix branch is the most concrete external mixed-nozzle slicer-infrastructure example found so far. The local runtime probe confirms it is buildable with work and can emit G-code influenced by mixed width/layer settings, but the tested CLI paths did not prove actual mixed-tool `T` command emission. It strengthens AMP's direction rather than replacing it: LixNix shows how hard execution becomes inside slicer internals, while AMP remains the planner, packet, sidecar, and gated-execution layer.

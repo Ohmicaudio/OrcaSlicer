@@ -92,11 +92,12 @@ Relevant Orca context:
 - OrcaSlicer issue about missing nozzle-size sidebar UI for non-BBL multi-extruder printers: <https://github.com/OrcaSlicer/OrcaSlicer/issues/14144>
 - OrcaSlicer issue discussing toolchanger multiple nozzle sizes in the same print: <https://github.com/OrcaSlicer/OrcaSlicer/issues/11424>
 - LixNix OrcaSlicer mixed-nozzle fork audit: `docs/research/AMP_LixNix_Multi_Nozzle_Fork_Audit_001.md`
+- LixNix runtime behavior probe: `docs/research/AMP_LixNix_Runtime_Behavior_Probe_001.md`
 - LixNix external fork: <https://github.com/LixNix/OrcaSlicer-multi-nozzle-size-printing>
 
 The Orca issues are project/community issue reports, not proof that any particular workflow is safe on U1 hardware.
 
-The LixNix fork is meaningful prior art. The inspected default branch adds mixed-nozzle plumbing around mapped filament/extruder nozzle-diameter lookup, while the `multi_nozzle_multi_layer_height` branch adds per-extruder layer-height configuration, combined-layer behavior, support nozzle restrictions, wipe tower adjustments, and fff_print tests. It still appears to be manual/per-feature or per-extruder assignment rather than a production-level validated automated geometry-driven planner. It has not been physically validated by this project and does not replace U1-specific validation.
+The LixNix fork is meaningful prior art. The inspected default branch adds mixed-nozzle plumbing around mapped filament/extruder nozzle-diameter lookup, while the `multi_nozzle_multi_layer_height` branch adds per-extruder layer-height configuration, combined-layer behavior, support nozzle restrictions, wipe tower adjustments, and fff_print tests. A local runtime probe built the branch with external-probe-only dependency/linker workarounds and exported G-code showing mixed width/layer behavior under scratch mixed-extruder configurations. The tested CLI paths did not emit observable `T0` / `T1` / `T2` / `T3` tool-change commands, so true mixed-nozzle tool-change output remains unconfirmed. It still appears to be manual/per-feature or per-extruder infrastructure rather than a production-level validated automated geometry-driven planner. It has not been physically validated by this project and does not replace U1-specific validation.
 
 ## 4. Academic Prior Art
 
