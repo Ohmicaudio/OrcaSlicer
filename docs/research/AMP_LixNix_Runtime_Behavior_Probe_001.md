@@ -268,6 +268,102 @@ Draco is no longer the current blocker after the targeted dependency build. Runt
 
 Because configure still stopped before an executable was produced, no runtime slicing probe was performed.
 
+### Bounded OpenCASCADE / wxWidgets Resolution Attempt
+
+A bounded follow-up pass checked the remaining OpenCASCADE and wxWidgets blockers.
+
+OpenCASCADE / OCCT artifacts found in the reused Snapmaker dependency prefix:
+
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\cmake\occt\OpenCASCADEConfig.cmake`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\cmake\occt\OpenCASCADEFoundationClassesTargets.cmake`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\cmake\occt\OpenCASCADEModelingDataTargets.cmake`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\cmake\occt\OpenCASCADEModelingAlgorithmsTargets.cmake`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\cmake\occt\OpenCASCADEVisualizationTargets.cmake`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\cmake\occt\OpenCASCADEApplicationFrameworkTargets.cmake`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\cmake\occt\OpenCASCADEDataExchangeTargets.cmake`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\bin\occt\TKernel.dll`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\bin\occt\TK*.dll`
+
+wxWidgets artifacts found in the reused Snapmaker dependency prefix:
+
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\wxbase31u.lib`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\wxmsw31u_core.lib`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\wxmsw31u_adv.lib`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\wxmsw31u_html.lib`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\wxmsw31u_gl.lib`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\wxmsw31u_aui.lib`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\wxmsw31u_net.lib`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\wxmsw31u_media.lib`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\lib\vc_x64_lib\mswu\wx\setup.h`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\include\wx`
+- `B:\ohmic\Snapmaker-OrcaSlicer\deps\build\OrcaSlicer_dep\usr\local\include\msvc\wx\setup.h`
+
+No `wxWidgetsConfig.cmake` or `wxWidgetsTargets.cmake` was found in the reused dependency prefix. This matters because the LixNix Windows CMake path calls:
+
+```cmake
+find_package(wxWidgets 3.3 CONFIG REQUIRED COMPONENTS html adv gl core base webview aui net media)
+```
+
+The LixNix OpenCASCADE path is also sensitive to `CMAKE_PREFIX_PATH` shape:
+
+```cmake
+set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
+find_package(OpenCASCADE REQUIRED)
+```
+
+Using a semicolon-list `CMAKE_PREFIX_PATH` caused OpenCASCADE path confusion. A no-GUI retry used a single Snapmaker dependency prefix, passed Draco separately with `draco_DIR`, and disabled GUI to avoid the wxWidgets config requirement.
+
+No-GUI configure retry directory:
+
+`B:\ohmic\external_builds\lixnix_multi_nozzle_probe_cli_nogui`
+
+Command attempted:
+
+```powershell
+B:\ohmic\tools\cmake-3.31.8-windows-x86_64\bin\cmake.exe `
+  -S B:\ohmic\external\OrcaSlicer-multi-nozzle-size-printing `
+  -B B:\ohmic\external_builds\lixnix_multi_nozzle_probe_cli_nogui `
+  -G "Visual Studio 17 2022" `
+  -A x64 `
+  -DSLIC3R_GUI=OFF `
+  -DCMAKE_PREFIX_PATH="B:/ohmic/Snapmaker-OrcaSlicer/deps/build/OrcaSlicer_dep/usr/local" `
+  -DCMAKE_MODULE_PATH="B:/ohmic/Snapmaker-OrcaSlicer/deps/build/OrcaSlicer_dep/usr/local/lib/cmake/CGAL" `
+  -DEIGEN3_INCLUDE_DIR="B:/ohmic/Snapmaker-OrcaSlicer/deps_src/eigen" `
+  -Ddraco_DIR="B:/ohmic/external_builds/lixnix_deps_draco_only/OrcaSlicer_dep/usr/local/share/cmake/draco"
+```
+
+Result:
+
+- `SLIC3R_GUI=OFF` avoided the wxWidgets config blocker.
+- Keeping `CMAKE_PREFIX_PATH` to a single Snapmaker dependency prefix avoided the OpenCASCADE target-file blocker.
+- Configure progressed past Boost, OpenCASCADE, Draco, OpenVDB, CGAL, OpenCV, JPEG, GMP, MPFR, and other dependencies.
+- CMake generation then failed because the imported Eigen target was missing.
+
+Remaining blocker:
+
+```text
+CMake Error at deps_src/admesh/CMakeLists.txt:20 (target_link_libraries):
+  Target "admesh" links to:
+    Eigen3::Eigen
+  but the target was not found.
+
+CMake Error at deps_src/clipper/CMakeLists.txt:17 (target_link_libraries):
+  Target "clipper" links to:
+    Eigen3::Eigen
+  but the target was not found.
+
+CMake Error at src/libslic3r/CMakeLists.txt:577 (target_link_libraries):
+  Target "libslic3r" links to:
+    Eigen3::Eigen
+  but the target was not found.
+```
+
+Bounded searches did not find a local `Eigen3Config.cmake`, `eigen3-config.cmake`, `Eigen3Targets.cmake`, or `signature_of_eigen3_matrix_library`.
+
+Interpretation:
+
+The bounded OpenCASCADE/wxWidgets pass resolved the specific OpenCASCADE and wx blockers for a no-GUI configure path, but runtime probing remains blocked by external dependency configuration because the LixNix branch expects an `Eigen3::Eigen` imported target that is not available from the reused local dependency artifacts.
+
 ## Self-Generated Probe Harness
 
 AMP now owns the probe geometry and inspection harness. We do not need the LixNix author to provide models.
@@ -308,7 +404,7 @@ Checklist:
 
 ## Runtime Probe Result
 
-No runtime G-code was generated from the LixNix branch in this probe. The bounded Draco attempt resolved the earlier Draco blocker by building `dep_Draco` from the LixNix dependency recipe, but configure still failed before producing an executable because later OpenCASCADE and wxWidgets dependency configuration issues remained.
+No runtime G-code was generated from the LixNix branch in this probe. The bounded Draco attempt resolved the earlier Draco blocker by building `dep_Draco` from the LixNix dependency recipe. A later no-GUI configure attempt also avoided the OpenCASCADE and wxWidgets blockers, but CMake generation still failed before producing an executable because `Eigen3::Eigen` was not available as an imported target.
 
 The probe geometry and inspector are now ready for a future run if the LixNix branch can be built.
 
@@ -648,7 +744,7 @@ Recommended next steps:
 
 1. Keep LixNix on the AMP toolchanger watchlist.
 2. Contact the author using `docs/community/AMP_LixNix_Collaboration_Draft.md`.
-3. Ask the LixNix author for intended workflow, expected G-code behavior, and Windows dependency/build instructions, especially whether the branch expects a full Orca dependency build rather than a mixed reused dependency prefix; AMP will provide its own probe geometry.
+3. Ask the LixNix author for intended workflow, expected G-code behavior, and Windows dependency/build instructions, especially whether the branch expects a full Orca dependency build rather than a mixed reused dependency prefix and what Eigen package/config setup provides `Eigen3::Eigen`; AMP will provide its own probe geometry.
 4. Use LixNix tests as inspiration for future AMP hot-path tests.
 5. Do not start production AMP slicer integration from this fork until U1 safety constraints and AMP's own representation boundary are stronger.
 
