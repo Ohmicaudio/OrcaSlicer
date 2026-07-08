@@ -138,7 +138,12 @@ def inspect_file(path: Path) -> Dict[str, object]:
     row["layer_height_count"] = len(unique_layer_heights)
     row["per_tool_extrusion_moves"] = "; ".join(f"{tool}={count}" for tool, count in sorted(per_tool_extrusions.items()))
 
-    evidence = len(unique_nozzle_values) > 1 or len(tools) > 1 or len(unique_layer_heights) > 1
+    extrusion_tools = {
+        tool
+        for tool, count in per_tool_extrusions.items()
+        if tool != "unknown" and count > 0
+    }
+    evidence = len(unique_nozzle_values) > 1 or len(extrusion_tools) > 1
     row["possible_mixed_nozzle_evidence"] = "yes" if evidence else "no"
     if len(unique_nozzle_values) <= 1:
         warnings.append("one or zero nozzle_diameter values found")
@@ -146,6 +151,8 @@ def inspect_file(path: Path) -> Dict[str, object]:
         warnings.append("one or zero active tools found")
     if int(row["tool_commands"]) == 0:
         warnings.append("no explicit T commands found")
+    elif len(extrusion_tools) <= 1:
+        warnings.append("tool commands found, but extrusion was assigned to one or zero tools")
     if not row["print_settings_id"]:
         warnings.append("missing print_settings_id")
     row["warnings"] = "; ".join(warnings)

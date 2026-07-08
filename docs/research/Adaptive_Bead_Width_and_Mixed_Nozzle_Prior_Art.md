@@ -105,13 +105,14 @@ Relevant Orca context:
 
 - OrcaSlicer official wiki page, "Mixed Nozzle Sizes," documenting support since `v2.2.0-beta`: <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes>
 - OrcaSlicer discussion #10175 on multi-nozzle/toolchanger layer-height limitations: <https://github.com/OrcaSlicer/OrcaSlicer/discussions/10175>
+- AMP official Orca baseline probe: `docs/benchmarks/AMP_Orca_Official_Mixed_Nozzle_Baseline_001_Results.md`
 - OrcaSlicer issue about missing nozzle-size sidebar UI for non-BBL multi-extruder printers: <https://github.com/OrcaSlicer/OrcaSlicer/issues/14144>
 - OrcaSlicer issue discussing toolchanger multiple nozzle sizes in the same print: <https://github.com/OrcaSlicer/OrcaSlicer/issues/11424>
 - LixNix OrcaSlicer mixed-nozzle fork audit: `docs/research/AMP_LixNix_Multi_Nozzle_Fork_Audit_001.md`
 - LixNix runtime behavior probe: `docs/research/AMP_LixNix_Runtime_Behavior_Probe_001.md`
 - LixNix external fork: <https://github.com/LixNix/OrcaSlicer-multi-nozzle-size-printing>
 
-The official Orca wiki is the primary baseline reference for manual/static mixed nozzle-size support. The Orca issues and discussions are project/community reports, not proof that any particular workflow is safe on U1 hardware.
+The official Orca wiki is the primary baseline reference for manual/static mixed nozzle-size support. The first AMP CLI baseline probe confirmed normal toolchanger/U1 control exports but did not produce real mixed-nozzle G-code from scratch CLI profile edits; the next baseline step is GUI/project setup using the documented Filament for Features or painting workflow. The Orca issues and discussions are project/community reports, not proof that any particular workflow is safe on U1 hardware.
 
 The LixNix fork is meaningful prior art, but it is no longer the only known mixed-nozzle path. Official Orca mixed nozzle-size support should be treated as the first baseline. LixNix remains relevant because the inspected default branch adds mixed-nozzle plumbing around mapped filament/extruder nozzle-diameter lookup, while the `multi_nozzle_multi_layer_height` branch appears to go deeper into per-extruder layer-height configuration, combined-layer behavior, support nozzle restrictions, wipe tower adjustments, and fff_print tests. A local runtime probe built the branch with external-probe-only dependency/linker workarounds and exported G-code showing mixed width/layer behavior under scratch mixed-extruder configurations. The tested CLI paths did not emit observable `T0` / `T1` / `T2` / `T3` tool-change commands, so true mixed-nozzle tool-change output remains unconfirmed. It still appears to be manual/per-feature or per-extruder infrastructure rather than a production-level validated automated geometry-driven planner. It has not been physically validated by this project and does not replace U1-specific validation.
 

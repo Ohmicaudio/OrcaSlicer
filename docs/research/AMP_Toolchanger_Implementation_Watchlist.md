@@ -78,6 +78,7 @@ Links:
 - <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes>
 - <https://github.com/OrcaSlicer/OrcaSlicer/discussions/10175>
 - `docs/benchmarks/AMP_Orca_Official_Mixed_Nozzle_Baseline_001.md`
+- `docs/benchmarks/AMP_Orca_Official_Mixed_Nozzle_Baseline_001_Results.md`
 
 What to watch:
 
@@ -87,6 +88,7 @@ What to watch:
 - Whether generated G-code preserves multiple nozzle/tool metadata and emits expected tool changes.
 - Whether layer height remains shared across tools, as raised in Orca discussion #10175.
 - Whether 3MF/project save-load preserves manual assignments.
+- Whether GUI/project setup succeeds where scratch CLI profile edits did not.
 
 AMP relevance:
 
