@@ -10,6 +10,16 @@ The goal is to identify what the fork actually implements, whether it affects mi
 
 This is a source audit only. It does not validate the fork physically, does not mean AMP has mixed-nozzle slicing, does not merge or endorse the fork, does not bypass Snapmaker validation, and does not prove touchscreen-compatible mixed-nozzle behavior.
 
+## Official Orca Baseline Context
+
+Official OrcaSlicer documentation now confirms manual/static mixed nozzle-size support since `v2.2.0-beta`. The documented baseline supports per-extruder nozzle diameters, nozzle-agnostic percentage-based line widths, and feature/tool assignment through Filament for Features or painting workflows:
+
+<https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes>
+
+That means LixNix is not the only known mixed-nozzle path. Official Orca should be treated as the first baseline for manual/static mixed-nozzle behavior.
+
+LixNix remains relevant because the audited `multi_nozzle_multi_layer_height` branch appears to go deeper into per-extruder layer-height behavior, combined-layer mechanics, support nozzle restrictions, wipe tower math, and hot-path slicer tests. AMP remains distinct from both because AMP targets automated geometry-driven resolution planning, cost gating, fallback reasoning, sidecar/debug contracts, and execution/preflight gating.
+
 ## External Repo Snapshot
 
 Repository:
@@ -108,7 +118,7 @@ Classification:
 - Default branch: Category 2, manual/per-extruder mixed nozzle plumbing.
 - Feature branch: Category 2 plus partial Category 3-adjacent slicing support for per-extruder layer-height behavior.
 
-The fork appears to support different nozzle diameter values per extruder and corrects nozzle-diameter lookup through filament-to-extruder mapping. The feature branch also adds per-extruder preferred layer heights and combines compatible region layers for coarse tools.
+The official Orca baseline already supports manual/static mixed nozzle-size workflows. The LixNix fork appears to extend or harden related infrastructure by supporting different nozzle diameter values per extruder and correcting nozzle-diameter lookup through filament-to-extruder mapping. The feature branch also adds per-extruder preferred layer heights and combines compatible region layers for coarse tools.
 
 It is not a complete AMP-style automated geometry-driven planner. The inspected code does not appear to compute a continuous resolution field, score regions by cosmetic/structural importance, assign tool classes from cost gates, or produce confidence-bearing region plans. It relies on slicer configuration, filament/feature assignment, and per-extruder settings.
 
@@ -409,3 +419,5 @@ Recommended actions:
 Bottom line:
 
 The LixNix fork is meaningful prior art. The default branch looks like practical mixed-nozzle plumbing for mapped filaments/extruders. The feature branch goes further and implements real per-extruder layer-height slicing mechanics with tests. It does not replace AMP's planner, sidecar, or U1 validation path.
+
+Official Orca mixed nozzle-size support should be used as the first baseline. LixNix should be treated as a deeper experimental reference for per-extruder layer-height and hot-path implementation lessons.

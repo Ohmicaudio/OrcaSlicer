@@ -6,6 +6,16 @@ This probe follows the source audit in `docs/research/AMP_LixNix_Multi_Nozzle_Fo
 
 This is external fork testing only. It does not merge LixNix code, does not mean AMP implements mixed-nozzle slicing, does not bypass Snapmaker validation, and does not prove touchscreen-compatible mixed-nozzle behavior.
 
+## Official Orca Baseline Context
+
+Official OrcaSlicer documentation now confirms manual/static mixed nozzle-size support since `v2.2.0-beta`:
+
+<https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes>
+
+The documented official workflow includes per-extruder nozzle diameters, percentage-based line widths, and feature/tool assignment through Filament for Features or painting workflows. This should be used as AMP's first manual/static mixed-nozzle baseline.
+
+The LixNix runtime probe remains useful because the external branch appears to go deeper into per-extruder layer-height behavior, combined-layer mechanics, support nozzle restrictions, wipe tower math, and hot-path slicer tests. It should not be treated as the only mixed-nozzle prior-art path.
+
 ## External Branch Inspected
 
 External repository:
@@ -810,6 +820,7 @@ Comparison to AMP:
 
 | Capability | LixNix branch | AMP current branch | Gap | Lesson |
 | --- | --- | --- | --- | --- |
+| Official Orca manual/static baseline | Separate official Orca workflow exists and should be tested first. | AMP can compare its packet assignment against official manual assignment. | Baseline runtime test still needs to be run. | Do not treat external forks as the only mixed-nozzle path. |
 | Per-extruder nozzle lookup | Implemented in slicer paths. | Offline tool matrix and packet metadata. | AMP has no production slicer lookup integration. | Future integration must map logical region/tool to physical nozzle carefully. |
 | Per-extruder layer height | Implemented with `extruder_layer_height` and combined layers. | Planned offline through resolution demand and tool assignment. | AMP does not alter layer topology. | Layer height must be co-planned with nozzle class. |
 | Geometry-driven automatic assignment | Not identified. Appears manual/per-feature/per-extruder. | Offline automatic planning exists. | AMP still needs eventual slicer integration. | AMP's planner layer remains distinct. |
@@ -884,4 +895,4 @@ Recommended next steps:
 
 Bottom line:
 
-The LixNix branch is the most concrete external mixed-nozzle slicer-infrastructure example found so far. The local runtime probe confirms it is buildable with work and can emit G-code influenced by mixed width/layer settings, but the tested CLI paths did not prove actual mixed-tool `T` command emission. It strengthens AMP's direction rather than replacing it: LixNix shows how hard execution becomes inside slicer internals, while AMP remains the planner, packet, sidecar, and gated-execution layer.
+The LixNix branch is the most concrete external deeper mixed-nozzle/per-extruder-layer-height slicer-infrastructure example found so far, but official Orca mixed nozzle-size support is now the first manual/static baseline. The local LixNix runtime probe confirms the branch is buildable with work and can emit G-code influenced by mixed width/layer settings, but the tested CLI paths did not prove actual mixed-tool `T` command emission. It strengthens AMP's direction rather than replacing it: official Orca covers manual/static assignment, LixNix shows how hard deeper execution becomes inside slicer internals, and AMP remains the planner, packet, sidecar, and gated-execution layer.

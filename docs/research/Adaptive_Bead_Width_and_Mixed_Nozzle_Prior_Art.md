@@ -15,7 +15,9 @@ This report reviews prior art and public implementation context for two related 
 - **Adaptive bead-width planning:** Software-controlled variation of extrusion width while using a declared physical nozzle size.
 - **Physical mixed-nozzle switching:** Use of multiple physical toolheads or nozzles with different diameters in one manufacturing plan.
 
-The important finding is that adaptive bead-width planning is already supported in modern slicer engines through Arachne-style variable-width wall generation, while automated geometry-driven assignment across physically different nozzle diameters remains a less settled workflow. This report did not identify a production-ready path that automatically partitions a single contiguous part into local regions, scores those regions, and assigns different physical nozzle diameters based on geometry, cosmetic priority, structural need, and tool-change cost.
+The important finding is that adaptive bead-width planning is already supported in modern slicer engines through Arachne-style variable-width wall generation, and official OrcaSlicer documentation now confirms manual/static mixed nozzle-size support since `v2.2.0-beta`. Orca's documented workflow supports per-extruder nozzle diameters, nozzle-agnostic percentage-based line widths, and feature/tool assignment through Filament for Features or painting workflows. This is important baseline prior art.
+
+This report did not identify a validated production implementation of automatic geometry-driven multi-tool resolution planning that partitions a single contiguous part into local regions, scores those regions, and assigns different bead-width, layer-height, or physical nozzle classes based on geometry, cosmetic priority, structural need, confidence, fallback behavior, and tool-change cost.
 
 Snapmaker's public U1 hot-end documentation confirms that U1 supports multiple hot-end nozzle diameter options, but it also states that "mixing different nozzle diameters in the same print job" is not currently supported. That makes physical mixed-nozzle behavior a hardware-validation and product-alignment question, not a safe assumption for early AMP code.
 
@@ -46,6 +48,19 @@ Role-specific line-width settings are static profile parameters. They can set di
 
 For current AMP validation, this is the Level 1 path: experimental profile-only output. It does not prove AMP planning behavior exists. It only tests whether existing settings and Arachne provide a useful baseline.
 
+### Manual / Static Mixed-Nozzle Workflows
+
+Official OrcaSlicer documentation describes mixed nozzle sizes as a supported workflow since `v2.2.0-beta`. The documented path is manual/static:
+
+- set each extruder's nozzle diameter in machine settings
+- make process profiles nozzle-agnostic by using percentage-based line widths
+- calibrate pressure advance and flow for each material/nozzle combination where needed
+- assign features to tools through Filament for Features or color painting
+
+This matters for AMP because official Orca is now the first baseline execution path to test before treating external forks as the only implementation reference.
+
+AMP remains distinct because it targets automated geometry-driven resolution planning, cost gating, fallback reasoning, sidecar/debug contracts, and execution/preflight gating. AMP should build on the official Orca baseline instead of claiming that manual mixed-nozzle workflows do not exist.
+
 ### Physical Nozzle / Tool Switching
 
 Physical nozzle switching refers to selecting, translating, parking, or activating a different toolhead/extruder with a different actual nozzle diameter. This is separate from adaptive bead width. It has hardware implications:
@@ -73,7 +88,7 @@ This report did not identify a stable, production-ready implementation of that f
 | Variable-width wall generation | Supported by Arachne-style engines. | Useful foundation for Stage 1 bead-width planning. |
 | Role-specific width settings | Common slicer profile capability. | Useful for experimental profile-only validation. |
 | Multi-extruder role assignment | Supported in slicers as static configuration. | Not the same as automated local region planning. |
-| Mixed physical nozzle setup | Described in Orca-related documentation and issues, with workflow limits. | Needs careful validation and should not be treated as solved for U1. |
+| Mixed physical nozzle setup | Official OrcaSlicer documentation describes manual/static mixed nozzle-size setup through per-extruder diameters, percentage line widths, and feature/tool assignment. | Important baseline capability; still not the same as automated AMP planning or U1-validated execution. |
 | Automated geometry-driven physical nozzle assignment | Not identified as production-ready in this review. | Core future AMP research area. |
 
 ### Desktop Slicer Capability Summary
@@ -84,20 +99,21 @@ This review treats variable-width path generation and physical mixed-nozzle assi
 | --- | --- | --- | --- |
 | Cura / Ultimaker lineage | Arachne/libArachne evidence exists. | Supported through normal multi-extruder workflows. | Not identified in this review. |
 | PrusaSlicer lineage | Arachne perimeter generation is documented. | Supported through normal multi-extruder workflows. | Not identified in this review. |
-| OrcaSlicer / Snapmaker Orca lineage | Arachne-derived wall generation and role-specific widths are available. | Supported through profile/tool configuration, with UI/workflow constraints reported for some printers. | Not identified as a validated U1 workflow. |
+| OrcaSlicer / Snapmaker Orca lineage | Arachne-derived wall generation and role-specific widths are available. | Official OrcaSlicer mixed nozzle-size workflow exists for manual/static assignment. Snapmaker U1 remains separately constrained by Snapmaker validation paths. | Not identified as a validated U1 automated geometry-driven workflow. |
 
 Relevant Orca context:
 
-- OrcaSlicer wiki page describing mixed nozzle setup by extruder: <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes.html>
+- OrcaSlicer official wiki page, "Mixed Nozzle Sizes," documenting support since `v2.2.0-beta`: <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes>
+- OrcaSlicer discussion #10175 on multi-nozzle/toolchanger layer-height limitations: <https://github.com/OrcaSlicer/OrcaSlicer/discussions/10175>
 - OrcaSlicer issue about missing nozzle-size sidebar UI for non-BBL multi-extruder printers: <https://github.com/OrcaSlicer/OrcaSlicer/issues/14144>
 - OrcaSlicer issue discussing toolchanger multiple nozzle sizes in the same print: <https://github.com/OrcaSlicer/OrcaSlicer/issues/11424>
 - LixNix OrcaSlicer mixed-nozzle fork audit: `docs/research/AMP_LixNix_Multi_Nozzle_Fork_Audit_001.md`
 - LixNix runtime behavior probe: `docs/research/AMP_LixNix_Runtime_Behavior_Probe_001.md`
 - LixNix external fork: <https://github.com/LixNix/OrcaSlicer-multi-nozzle-size-printing>
 
-The Orca issues are project/community issue reports, not proof that any particular workflow is safe on U1 hardware.
+The official Orca wiki is the primary baseline reference for manual/static mixed nozzle-size support. The Orca issues and discussions are project/community reports, not proof that any particular workflow is safe on U1 hardware.
 
-The LixNix fork is meaningful prior art. The inspected default branch adds mixed-nozzle plumbing around mapped filament/extruder nozzle-diameter lookup, while the `multi_nozzle_multi_layer_height` branch adds per-extruder layer-height configuration, combined-layer behavior, support nozzle restrictions, wipe tower adjustments, and fff_print tests. A local runtime probe built the branch with external-probe-only dependency/linker workarounds and exported G-code showing mixed width/layer behavior under scratch mixed-extruder configurations. The tested CLI paths did not emit observable `T0` / `T1` / `T2` / `T3` tool-change commands, so true mixed-nozzle tool-change output remains unconfirmed. It still appears to be manual/per-feature or per-extruder infrastructure rather than a production-level validated automated geometry-driven planner. It has not been physically validated by this project and does not replace U1-specific validation.
+The LixNix fork is meaningful prior art, but it is no longer the only known mixed-nozzle path. Official Orca mixed nozzle-size support should be treated as the first baseline. LixNix remains relevant because the inspected default branch adds mixed-nozzle plumbing around mapped filament/extruder nozzle-diameter lookup, while the `multi_nozzle_multi_layer_height` branch appears to go deeper into per-extruder layer-height configuration, combined-layer behavior, support nozzle restrictions, wipe tower adjustments, and fff_print tests. A local runtime probe built the branch with external-probe-only dependency/linker workarounds and exported G-code showing mixed width/layer behavior under scratch mixed-extruder configurations. The tested CLI paths did not emit observable `T0` / `T1` / `T2` / `T3` tool-change commands, so true mixed-nozzle tool-change output remains unconfirmed. It still appears to be manual/per-feature or per-extruder infrastructure rather than a production-level validated automated geometry-driven planner. It has not been physically validated by this project and does not replace U1-specific validation.
 
 ## 4. Academic Prior Art
 
@@ -198,7 +214,8 @@ Stage 1 should remain software-only until the read-only planner boundary is stab
 - Kuipers, T.; Doubrovski, E. L.; Wu, J.; Wang, C. C. L., "A framework for adaptive width control of dense contour-parallel toolpaths in fused deposition modeling": <https://arxiv.org/abs/2004.13497>
 - Kuipers, T.; Doubrovski, E. L.; Wu, J.; Wang, C. C. L., DOI record for "A framework for adaptive width control of dense contour-parallel toolpaths in fused deposition modeling": <https://doi.org/10.1016/j.cad.2020.102907>
 - TU Delft research record for the Kuipers et al. paper: <https://research.tudelft.nl/en/publications/a-framework-for-adaptive-width-control-of-dense-contour-parallel-/>
-- OrcaSlicer wiki, "Mixed Nozzle Sizes": <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes.html>
+- OrcaSlicer wiki, "Mixed Nozzle Sizes": <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes>
+- OrcaSlicer discussion #10175, "Multi Nozzle, Toolchangers, IDEX... What Feature do they all need?": <https://github.com/OrcaSlicer/OrcaSlicer/discussions/10175>
 - OrcaSlicer issue #14144, "No nozzle size selector in the sidebar for non-BBL multi-extruder printers": <https://github.com/OrcaSlicer/OrcaSlicer/issues/14144>
 - OrcaSlicer issue #11424, "Tool Changer multiple nozzle sizes in same print": <https://github.com/OrcaSlicer/OrcaSlicer/issues/11424>
 - LixNix OrcaSlicer multi-nozzle fork: <https://github.com/LixNix/OrcaSlicer-multi-nozzle-size-printing>

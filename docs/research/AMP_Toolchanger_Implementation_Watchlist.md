@@ -71,6 +71,30 @@ AMP relevance:
 
 ## Snapmaker / Orca Watchlist
 
+### Official Orca Mixed Nozzle Sizes Baseline
+
+Links:
+
+- <https://www.orcaslicer.com/wiki/guides/mixed_nozzle_sizes>
+- <https://github.com/OrcaSlicer/OrcaSlicer/discussions/10175>
+- `docs/benchmarks/AMP_Orca_Official_Mixed_Nozzle_Baseline_001.md`
+
+What to watch:
+
+- Whether official Orca's manual/static workflow can represent the AMP U1-like tool ladder: 0.2 / 0.4 / 0.6 / 0.8.
+- Whether percentage-based line widths keep process profiles nozzle-agnostic across tools.
+- Whether Filament for Features and painting workflows can map the existing AMP region bodies to tools.
+- Whether generated G-code preserves multiple nozzle/tool metadata and emits expected tool changes.
+- Whether layer height remains shared across tools, as raised in Orca discussion #10175.
+- Whether 3MF/project save-load preserves manual assignments.
+
+AMP relevance:
+
+- This is now the primary manual/static mixed-nozzle baseline.
+- AMP should compare its automated packet output against this baseline instead of claiming manual mixed-nozzle workflows do not exist.
+- The shared-layer-height limitation is directly relevant to AMP's future local-Z and multi-resolution planning work.
+- U1 touchscreen compatibility remains a separate Snapmaker validation question.
+
 ### LixNix OrcaSlicer Multi-Nozzle Fork
 
 Links:
@@ -89,6 +113,7 @@ What to watch:
 AMP relevance:
 
 - Useful implementation reference for future behavior-changing C++ work.
+- Secondary/deeper experimental reference now that official Orca manual/static mixed-nozzle support is documented.
 - Confirms that mixed-nozzle support touches Flow, LayerRegion, PerimeterGenerator, ToolOrdering, WipeTower, and PrintConfig.
 - Does not replace AMP's planner, sidecar packet, U1 validation, or Fluidd/Klipper adapter path.
 - Should remain research/watchlist material until it is validated against AMP's safety and U1 constraints.
