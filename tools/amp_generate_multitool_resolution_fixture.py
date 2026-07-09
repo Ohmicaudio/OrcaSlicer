@@ -211,10 +211,14 @@ def build_mesh() -> List[Triangle]:
         add_box(tris, -73 + idx * 3.5, -72.4 + idx * 3.5, 12, 12.6, BASE_Z1, 3.55)
 
     # Region 0.4: normal visible/detail and cosmetic slope.
-    add_sloped_panel(tris, -36, 0, 8, 34, BASE_Z1, 3.2, 4.2)
-    add_bar_text(tris, -33, 25, scale=1.0, stroke=0.65, z0=4.2, z1=4.75)
+    # Keep raised details on a supported flat pad, with a separate sloped face
+    # behind it. Earlier revisions placed the text at the high side of the
+    # slope, which left most bars floating above the surface.
+    add_box(tris, -36, 0, 8, 29, BASE_Z1, 4.2)
+    add_sloped_panel(tris, -36, 0, 29, 34, BASE_Z1, 3.2, 4.2)
+    add_bar_text(tris, -33, 25, scale=1.0, stroke=0.65, z0=4.15, z1=4.75)
     for idx in range(5):
-        add_box(tris, -34 + idx * 7, -31 + idx * 7, 10, 10.8, 4.2, 4.6)
+        add_box(tris, -34 + idx * 7, -31 + idx * 7, 10, 10.8, 4.15, 4.6)
 
     # Region 0.6: structural shell / bosses / holes.
     add_box(tris, 10, 45, 6, 34, BASE_Z1, 5.1)
@@ -246,10 +250,14 @@ def build_region_mesh(region_name: str) -> List[Triangle]:
             add_box(tris, -14 + idx * 4, -13.4 + idx * 4, -2, -1.4, 1.2, 1.75)
     elif region_name == "normal_visible_detail_zone":
         add_box(tris, -22, 22, -16, 16, 0, 1.4)
-        add_sloped_panel(tris, -18, 18, -10, 10, 1.4, 1.7, 2.7)
-        add_bar_text(tris, -16, 4, scale=0.9, stroke=0.65, z0=2.7, z1=3.25)
+        # Supported visible-detail pad plus a separate slope strip. Text and
+        # ladder bars are slightly embedded into the pad so slicers do not
+        # treat them as floating independent islands.
+        add_box(tris, -18, 18, -13, 10, 1.4, 2.7)
+        add_sloped_panel(tris, -18, 18, 10, 15, 1.4, 1.7, 2.7)
+        add_bar_text(tris, -16, 4, scale=0.9, stroke=0.65, z0=2.65, z1=3.25)
         for idx in range(5):
-            add_box(tris, -16 + idx * 7, -13 + idx * 7, -12, -11.2, 2.7, 3.1)
+            add_box(tris, -16 + idx * 7, -13 + idx * 7, -12, -11.2, 2.65, 3.1)
     elif region_name == "structural_shell_zone":
         add_box(tris, -22, 22, -18, 18, 0, 2.4)
         add_box(tris, -14, 14, -10, 10, 2.4, 3.1)
