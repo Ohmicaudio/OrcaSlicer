@@ -184,6 +184,27 @@ This does not prove independent per-tool or per-region layer height.
 
 This does not prove print strength, surface quality, bonding, dimensional accuracy, or safe printer execution.
 
+## 3MF Roundtrip Update
+
+The official Orca 3MF/project preservation probe is documented here:
+
+```text
+docs/benchmarks/AMP_Official_Orca_3MF_RoundTrip_Preservation_001.md
+```
+
+Result:
+
+- original 3MF exists
+- reopened project preserved the four region objects
+- object-to-tool assignments are stored as extruder metadata `1`, `2`, `3`, and `4`
+- project-level nozzle vector `0.2,0.4,0.6,0.8,0.8` is preserved
+- mixed probe process/printer IDs are preserved
+- full per-region AMP process/layer-height intent remains sidecar-authoritative
+
+Decision:
+
+Use official Orca 3MF as the first manual execution/review bridge, with AMP sidecar JSON remaining authoritative for planner intent, fallback, local-Z, and safety metadata.
+
 ## Next Bridge
 
 The next bridge is:
@@ -191,16 +212,15 @@ The next bridge is:
 ```text
 AMP plan packet
 -> official Orca 3MF/project setup
--> save/reopen preservation test
--> G-code export validation after round trip
+-> AMP sidecar authority
+-> G-code export validation after project round trip
 ```
 
-The specific next question is whether the official Orca project file preserves:
+The next specific question is whether a G-code export after reopening the 3MF remains conformant with the AMP expected tool map:
 
-- object-to-tool assignment
-- nozzle vector
-- process/profile selection
-- region object names
-- exported G-code conformance after reopening
+- expected nozzle classes `0.2`, `0.4`, `0.6`, `0.8`
+- active `T0`, `T1`, `T2`, `T3`
+- no extra active tool beyond the unused preset slot
+- object comments still carrying region identity
 
-Until that is tested, the G-code baseline and workflow manifest are valid, but 3MF/project preservation remains pending.
+Until that export-after-roundtrip is tested, 3MF/project preservation is valid for representation, not physical execution.

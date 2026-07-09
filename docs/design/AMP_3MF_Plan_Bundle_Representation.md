@@ -67,18 +67,35 @@ The following should not be treated as solved by a 3MF sidecar:
 - G-code export remains a diagnostic step only until slicer integration explicitly supports the plan.
 - Touchscreen mixed physical nozzle execution remains blocked.
 
+## Official Orca 3MF Roundtrip Result
+
+The official Orca 3MF/project roundtrip preservation probe is documented here:
+
+```text
+docs/benchmarks/AMP_Official_Orca_3MF_RoundTrip_Preservation_001.md
+```
+
+Result:
+
+- official Orca 3MF preserves four distinct AMP region objects
+- object-to-tool assignments are preserved as `extruder` metadata
+- project-level nozzle vector `0.2,0.4,0.6,0.8,0.8` is preserved
+- mixed probe process/printer IDs are preserved
+- AMP's per-region process/profile/layer-height plan remains sidecar-authoritative
+
+Decision:
+
+Use official Orca 3MF as the first manual execution/review bridge, while keeping the AMP sidecar as the authority for planner intent, fallback reasoning, local-Z intent, confidence, and safety state.
+
 ## Next Probe
 
-The next representation probe should be a manual or slicer-supported GUI round trip:
+The next representation probe should export G-code after reopening the official Orca 3MF:
 
-1. Import the four AMP region bodies as separate objects.
-2. Assign object names matching AMP regions.
-3. Assign tool/material slots if the GUI supports it.
-4. Apply only GUI-supported object overrides.
-5. Save 3MF.
-6. Reopen 3MF.
-7. Inspect object identity and assignments.
-8. Export G-code only to diagnose whether the representation collapses or survives.
+1. Reopen the saved official Orca 3MF.
+2. Confirm object/tool assignments.
+3. Export G-code.
+4. Run the AMP G-code conformance validator.
+5. Compare nozzle vector, active T commands, object comments, and process ID against the known successful GUI export.
 
 ## Non-Claims
 

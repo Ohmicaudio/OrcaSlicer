@@ -128,6 +128,10 @@ Official workflow bridge report:
 
 `docs/benchmarks/AMP_Official_Orca_Workflow_Bridge_001.md`
 
+Official 3MF roundtrip preservation report:
+
+`docs/benchmarks/AMP_Official_Orca_3MF_RoundTrip_Preservation_001.md`
+
 Bridge tooling:
 
 ```text
@@ -144,6 +148,18 @@ warnings=3
 ```
 
 The warnings cover the extra unused fifth `0.8` preset/tool slot, shared/global layer-height behavior, and the observed single process ID.
+
+3MF preservation result:
+
+- four region objects are preserved
+- object-to-tool assignments are stored as `extruder` values `1`, `2`, `3`, and `4`
+- project-level nozzle vector `0.2,0.4,0.6,0.8,0.8` is preserved
+- mixed probe process/printer IDs are preserved
+- full AMP per-region process/layer-height intent remains sidecar-authoritative
+
+Decision:
+
+Use official Orca 3MF as AMP's first manual execution/review bridge, with AMP sidecar JSON remaining authoritative for planner intent, fallback, local-Z, and safety metadata.
 
 Setup:
 

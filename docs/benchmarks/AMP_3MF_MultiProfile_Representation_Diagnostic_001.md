@@ -231,17 +231,25 @@ The warnings are intentional:
 - bundle is a sidecar authority, not native slicer mixed-profile support
 - hardware preflight remains not_ready
 
-This sidecar bundle is the current authority path. Native 3MF/process preservation still needs GUI/project round-trip testing before AMP can treat it as a slicer-native representation bridge.
+This sidecar bundle is the current authority path for full AMP planner intent. Official Orca GUI 3MF roundtrip testing now shows that native 3MF preserves region object identity, object-to-tool assignment, project-level nozzle vector, and mixed probe process/printer IDs. It does not prove native 3MF carries AMP's richer per-region process/layer-height intent.
 
-## Round-Trip Test
+## Official Orca 3MF Round-Trip Test
 
-No automatic 3MF round-trip was performed in this pass.
+The official Orca 3MF/project roundtrip preservation probe is documented here:
 
-Reason:
+```text
+docs/benchmarks/AMP_Official_Orca_3MF_RoundTrip_Preservation_001.md
+```
 
-- The current tool creates a manifest/instructions probe, not a 3MF archive.
-- A trustworthy round trip should use Snapmaker Orca's GUI or a slicer-supported 3MF writer path.
-- Hand-authored 3MF could create false confidence if package relationships or IDs are wrong.
+Result:
+
+- original 3MF saved through official Orca GUI
+- original 3MF reopened through official Orca GUI
+- four distinct region objects preserved
+- object `extruder` metadata preserved as `1`, `2`, `3`, `4`
+- project-level nozzle vector preserved as `0.2,0.4,0.6,0.8,0.8`
+- mixed probe process/printer IDs preserved
+- independent per-region AMP process/layer-height intent remains sidecar-only
 
 ## 3MF vs Assemble-List Comparison
 
@@ -254,14 +262,14 @@ Reason:
 | per-object layer-height profile | partial object key only | no proven execution | possible GUI support needs manual test | yes, advisory | Representation and execution are different. |
 | filament/tool assignment | yes, filament IDs | yes, object `extruder` | yes | yes | 3MF improves confidence for material/tool slot preservation. |
 | modifier/volume support | limited | yes, volume config metadata supported | yes | region metadata | 3MF is better for object/volume structure. |
-| round-trip stability | weak for full AMP queue | likely for object/material metadata | needs manual test | deterministic sidecar | Needs GUI/CLI round-trip probe. |
+| round-trip stability | weak for full AMP queue | preserved for object/tool/nozzle metadata in official Orca GUI probe | preserved for manual object/tool setup | deterministic sidecar | Full per-region process/layer intent remains sidecar-only. |
 | CLI load support | yes | yes | not applicable | no direct slicer load | CLI can load BBS 3MF. |
 | GUI load support | not primary | yes | yes | sidecar only | GUI likely best next test surface. |
 | G-code export fidelity | collapsed in same-plate test | unknown | unknown | not G-code | Must be measured with a real 3MF project. |
 
 ## Whether 3MF Is A Viable Bridge For AMP
 
-3MF is a viable bridge for object identity, object/volume metadata, material/tool-slot assignment, and project-bundle review.
+3MF is a viable bridge for object identity, object/volume metadata, material/tool-slot assignment, project-level nozzle vector, and project-bundle review.
 
 3MF is not yet proven as a bridge for full per-object process/nozzle execution. Current evidence suggests that process and nozzle identity remain project/global unless the slicer has explicit behavior to consume richer per-object process metadata.
 
@@ -272,12 +280,12 @@ Recommended path:
 ```text
 AMP packet
 -> AMP 3MF sidecar plan bundle
--> manual GUI object/tool-slot round trip
+-> official Orca 3MF object/tool-slot bridge
 -> inspect 3MF reload
--> inspect exported G-code
+-> inspect exported G-code after round trip
 ```
 
-If GUI 3MF can preserve object/material assignments but not full process/nozzle profiles, use it as a review bundle only and keep the authoritative AMP plan in sidecar JSON.
+Because GUI 3MF preserves object/material assignments and the project-level nozzle vector but not full AMP per-region process/layer-height intent, use it as the first manual execution/review bridge and keep the authoritative AMP plan in sidecar JSON.
 
 If 3MF also collapses to one global process/nozzle on export, true mixed-profile execution requires later slicer integration.
 

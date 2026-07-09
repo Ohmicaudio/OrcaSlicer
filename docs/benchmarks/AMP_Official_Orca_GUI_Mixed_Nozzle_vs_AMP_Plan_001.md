@@ -242,6 +242,14 @@ tools/amp_generate_orca_gui_workflow_manifest.py
 tools/amp_validate_orca_mixed_nozzle_gcode_against_plan.py
 ```
 
+The 3MF/project roundtrip preservation probe now exists:
+
+```text
+docs/benchmarks/AMP_Official_Orca_3MF_RoundTrip_Preservation_001.md
+```
+
+It shows that official Orca 3MF preserves the four region objects, object-to-tool assignments, the project-level nozzle vector, and mixed probe process/printer IDs. It does not prove AMP's richer per-region process/layer-height plan is carried by native Orca 3MF execution.
+
 The bridge generated a manual Orca GUI setup manifest from `outputs/amp_plan_packet_001/` and validated the repaired official Orca GUI G-code against the AMP expected `0.2` / `0.4` / `0.6` / `0.8` tool map.
 
 Validation result:
@@ -259,7 +267,7 @@ The next bridge is no longer another proof that mixed-nozzle G-code can exist. T
 ```text
 AMP plan packet
 -> official Orca 3MF/project setup
--> save/reopen preservation test
+-> AMP sidecar authority
 -> G-code export validation after round trip
 ```
 
