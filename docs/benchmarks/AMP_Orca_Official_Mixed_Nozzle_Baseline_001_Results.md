@@ -108,9 +108,17 @@ Local exported G-code:
 
 `C:\Users\d\Desktop\AMP Official Orca Mixed Nozzle GUI Probe\02_save_outputs_here\gcode\official_orca_mixed_probe_0p12.gcode`
 
+Repaired-model rerun G-code:
+
+`C:\Users\d\Desktop\AMP Official Orca Mixed Nozzle GUI Probe\02_save_outputs_here\gcode\official_orca_mixed_probe_0p12_fixed_models.gcode`
+
 Local preview screenshot:
 
 `C:\Users\d\Desktop\AMP Official Orca Mixed Nozzle GUI Probe\orca_exported_sliced_preview.png`
+
+Repaired-model rerun preview screenshot:
+
+`C:\Users\d\Desktop\AMP Official Orca Mixed Nozzle GUI Probe\rerun_exported_fixed_models_preview.png`
 
 Setup:
 
@@ -158,6 +166,39 @@ Tool-command counts in the exported G-code:
 Preview caveat:
 
 The GUI reported a floating-region/support warning for `normal_visible_detail_zone.stl`. The warning did not block slicing or export, but it means this particular model remains a representation/probe artifact, not a print-ready physical validation model.
+
+Repaired-model rerun:
+
+After the initial export, `normal_visible_detail_zone.stl` was audited and found to contain raised/text/detail shells floating above the sloped panel. The fixture generator was corrected so the normal visible-detail region has a supported flat detail pad and slightly embedded raised features.
+
+The four split-region STLs were regenerated and copied into the local GUI probe folder. `micro_detail_zone.stl`, `normal_visible_detail_zone.stl`, `structural_shell_zone.stl`, and `bulk_zone.stl` were all checked for unsupported above-base components before the rerun.
+
+Rerun result:
+
+| Probe | Result |
+| --- | --- |
+| Official Orca GUI four-object mixed-tool plate, repaired models | export succeeded |
+| Visible collision/floating-region warning after arrange | no |
+| Estimated total time | `36m18s` |
+| Total filament | `15.61g` |
+| Tool changes reported by preview | `78` |
+
+Repaired-model G-code evidence:
+
+```text
+; nozzle_diameter = 0.2,0.4,0.6,0.8,0.8
+; print_settings_id = 0.12mm Mixed Probe @AMP Mixed ToolChanger
+; printer_settings_id = AMP Mixed ToolChanger 0.2-0.4-0.6-0.8
+```
+
+Tool-command counts in the repaired-model exported G-code:
+
+| Tool command | Count |
+| --- | ---: |
+| `T0` | 16 |
+| `T1` | 28 |
+| `T2` | 18 |
+| `T3` | 18 |
 
 Interpretation:
 
