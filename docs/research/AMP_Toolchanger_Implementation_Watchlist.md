@@ -86,9 +86,10 @@ What to watch:
 - Whether percentage-based line widths keep process profiles nozzle-agnostic across tools.
 - Whether Filament for Features and painting workflows can map the existing AMP region bodies to tools.
 - Whether generated G-code preserves multiple nozzle/tool metadata and emits expected tool changes.
+- Repaired AMP GUI probe confirms official upstream Orca can export `0.2` / `0.4` / `0.6` / `0.8` mixed-nozzle G-code with `T0` / `T1` / `T2` / `T3` commands from manual object/tool assignment.
 - Whether layer height remains shared across tools, as raised in Orca discussion #10175.
 - Whether 3MF/project save-load preserves manual assignments.
-- Whether GUI/project setup succeeds where scratch CLI profile edits did not.
+- Whether 3MF/project setup remains stable after save/reopen; GUI G-code export now succeeds where scratch CLI profile edits did not.
 
 AMP relevance:
 

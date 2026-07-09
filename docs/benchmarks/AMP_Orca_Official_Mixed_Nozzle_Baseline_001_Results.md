@@ -120,6 +120,10 @@ Repaired-model rerun preview screenshot:
 
 `C:\Users\d\Desktop\AMP Official Orca Mixed Nozzle GUI Probe\rerun_exported_fixed_models_preview.png`
 
+Detailed comparison report:
+
+`docs/benchmarks/AMP_Official_Orca_GUI_Mixed_Nozzle_vs_AMP_Plan_001.md`
+
 Setup:
 
 - registered a local upstream Orca custom toolchanger printer preset for the probe
