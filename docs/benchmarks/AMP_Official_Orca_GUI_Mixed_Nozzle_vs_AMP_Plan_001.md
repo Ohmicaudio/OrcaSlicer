@@ -234,13 +234,33 @@ This does not prove print strength, surface quality, bonding, dimensional accura
 
 ## Next Bridge
 
-The next bridge is not another proof that mixed-nozzle G-code can exist. The next bridge is:
+The official workflow bridge now exists:
+
+```text
+docs/benchmarks/AMP_Official_Orca_Workflow_Bridge_001.md
+tools/amp_generate_orca_gui_workflow_manifest.py
+tools/amp_validate_orca_mixed_nozzle_gcode_against_plan.py
+```
+
+The bridge generated a manual Orca GUI setup manifest from `outputs/amp_plan_packet_001/` and validated the repaired official Orca GUI G-code against the AMP expected `0.2` / `0.4` / `0.6` / `0.8` tool map.
+
+Validation result:
+
+```text
+PASS
+errors=0
+warnings=3
+```
+
+Warnings were limited to the extra unused fifth `0.8` preset slot, shared/global layer-height behavior, and the observed single process ID.
+
+The next bridge is no longer another proof that mixed-nozzle G-code can exist. The next bridge is:
 
 ```text
 AMP plan packet
--> official Orca manual workflow guide / project manifest
--> G-code validator that checks Orca output against the AMP packet
--> later 3MF save/reopen preservation test
+-> official Orca 3MF/project setup
+-> save/reopen preservation test
+-> G-code export validation after round trip
 ```
 
 The sidecar remains the authority for AMP-specific data that G-code does not carry:

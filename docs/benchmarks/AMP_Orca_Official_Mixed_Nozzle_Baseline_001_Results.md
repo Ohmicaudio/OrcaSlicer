@@ -124,6 +124,27 @@ Detailed comparison report:
 
 `docs/benchmarks/AMP_Official_Orca_GUI_Mixed_Nozzle_vs_AMP_Plan_001.md`
 
+Official workflow bridge report:
+
+`docs/benchmarks/AMP_Official_Orca_Workflow_Bridge_001.md`
+
+Bridge tooling:
+
+```text
+tools/amp_generate_orca_gui_workflow_manifest.py
+tools/amp_validate_orca_mixed_nozzle_gcode_against_plan.py
+```
+
+Bridge validation result:
+
+```text
+PASS
+errors=0
+warnings=3
+```
+
+The warnings cover the extra unused fifth `0.8` preset/tool slot, shared/global layer-height behavior, and the observed single process ID.
+
 Setup:
 
 - registered a local upstream Orca custom toolchanger printer preset for the probe
