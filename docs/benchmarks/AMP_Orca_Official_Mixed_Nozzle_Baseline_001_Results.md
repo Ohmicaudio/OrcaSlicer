@@ -90,6 +90,81 @@ Interpretation:
 
 The installed upstream Orca baseline proves the shipped toolchanger control can export G-code through CLI, but this probe did not successfully reproduce the official mixed-nozzle workflow through CLI scratch settings. The official documented workflow may require GUI/project setup, project-preset registration, painting/Filament-for-Features assignment, or additional metadata not carried by this CLI probe.
 
+## Upstream Orca GUI Mixed-Nozzle Result
+
+Date:
+
+`2026-07-09`
+
+Executable:
+
+`C:\Users\d\tools\OrcaSlicer\V2.4.1_portable_full\orca-slicer.exe`
+
+Local GUI probe workspace:
+
+`C:\Users\d\Desktop\AMP Official Orca Mixed Nozzle GUI Probe\`
+
+Local exported G-code:
+
+`C:\Users\d\Desktop\AMP Official Orca Mixed Nozzle GUI Probe\02_save_outputs_here\gcode\official_orca_mixed_probe_0p12.gcode`
+
+Local preview screenshot:
+
+`C:\Users\d\Desktop\AMP Official Orca Mixed Nozzle GUI Probe\orca_exported_sliced_preview.png`
+
+Setup:
+
+- registered a local upstream Orca custom toolchanger printer preset for the probe
+- configured tool nozzle diameters as `0.2`, `0.4`, `0.6`, `0.8`, plus one unused fifth sample-toolchanger slot
+- registered a local `0.12mm Mixed Probe @AMP Mixed ToolChanger` process preset
+- used percentage-based line widths to avoid the shared-process absolute-width failure
+- disabled the prime tower for this representation probe
+- imported four region-body STL files as separate objects
+- assigned object/tool slots:
+  - `micro_detail_zone.stl` -> tool slot `1` / emitted `T0`
+  - `normal_visible_detail_zone.stl` -> tool slot `2` / emitted `T1`
+  - `structural_shell_zone.stl` -> tool slot `3` / emitted `T2`
+  - `bulk_zone.stl` -> tool slot `4` / emitted `T3`
+
+Result:
+
+| Probe | Result |
+| --- | --- |
+| Official Orca GUI four-object mixed-tool plate | export succeeded |
+| Process | `0.12mm Mixed Probe @AMP Mixed ToolChanger` |
+| Printer | `AMP Mixed ToolChanger 0.2-0.4-0.6-0.8` |
+| Estimated total time | `36m13s` |
+| Total filament | `15.38g` |
+| Tool changes reported by preview | `77` |
+| Filament change times reported by preview | `0` |
+
+G-code evidence:
+
+```text
+; nozzle_diameter = 0.2,0.4,0.6,0.8,0.8
+; print_settings_id = 0.12mm Mixed Probe @AMP Mixed ToolChanger
+; printer_settings_id = AMP Mixed ToolChanger 0.2-0.4-0.6-0.8
+```
+
+Tool-command counts in the exported G-code:
+
+| Tool command | Count |
+| --- | ---: |
+| `T0` | 16 |
+| `T1` | 27 |
+| `T2` | 18 |
+| `T3` | 18 |
+
+Preview caveat:
+
+The GUI reported a floating-region/support warning for `normal_visible_detail_zone.stl`. The warning did not block slicing or export, but it means this particular model remains a representation/probe artifact, not a print-ready physical validation model.
+
+Interpretation:
+
+The official upstream Orca GUI workflow can preserve multiple nozzle diameters in exported G-code and can emit real multi-tool `T0`/`T1`/`T2`/`T3` commands from separate object/tool assignments. This corrects the earlier CLI-only result: the CLI scratch-profile failure is not evidence that official Orca mixed-nozzle output is unavailable. It is evidence that the CLI scratch-profile path was incomplete for the official GUI workflow.
+
+This remains an upstream Orca GUI representation baseline. It does not validate Snapmaker U1 execution, physical mixed-nozzle printing, or touchscreen-compatible mixed-nozzle behavior.
+
 ## Snapmaker Orca Baseline Result
 
 Executable:
@@ -127,23 +202,24 @@ Exported G-code found:
 | Output | Nozzle values | Tool commands | Mixed-nozzle evidence |
 | --- | --- | --- | --- |
 | Upstream `MyToolChanger 0.4` control | `0.4` | `0` | no |
+| Upstream official GUI mixed-tool probe | `0.2,0.4,0.6,0.8,0.8` | `T0`, `T1`, `T2`, `T3` | yes, representation baseline |
 | Snapmaker U1 `0.4` control | `0.4` | `2` startup/tool-prep commands | no |
 
 The Snapmaker control includes tool commands in start/tool-prep code, but extrusion moves were assigned to one tool only. The inspector was tightened so tool-prep `T` commands alone are not counted as mixed-nozzle evidence.
 
 Real mixed-nozzle G-code observed:
 
-No.
+Yes, through the upstream Orca GUI/project workflow.
 
-The probe did not produce G-code containing multiple nozzle diameter values or extrusion assigned to multiple real tools.
+The earlier CLI scratch-profile probe did not produce mixed-nozzle output. The later upstream Orca GUI probe did produce G-code containing multiple nozzle diameter values and real `T0`/`T1`/`T2`/`T3` tool commands.
 
 ## 3MF / Project Findings
 
-No 3MF/project save-reopen persistence result was produced in this CLI pass.
+No 3MF/project save-reopen persistence result was produced in this pass.
 
 Reason:
 
-The mixed-nozzle scratch profile did not export through CLI, and the official GUI Filament-for-Features or painting workflow was not exercised in this run.
+The GUI probe focused on object/tool assignment, slicing, and G-code export. It did not yet save and reopen a 3MF/project file to validate persistence.
 
 Future baseline work should use GUI/project setup explicitly and then inspect saved 3MF/project contents and exported G-code.
 
@@ -168,6 +244,7 @@ Result:
 | Documented mixed-nozzle support | yes, official wiki | external fork/prior art |
 | CLI control export | yes, single-nozzle toolchanger control | yes |
 | CLI mixed-nozzle G-code observed | no | not proven; no observed `T0`/`T1`/`T2`/`T3` tool-change output in tested paths |
+| GUI mixed-nozzle G-code observed | yes | not tested |
 | Mixed width/layer behavior observed | no mixed output in this probe | yes, under scratch mixed-extruder configs |
 | Per-extruder layer height | not observed | source-level implementation appears present |
 | GUI/project workflow tested | no | no |
@@ -179,14 +256,14 @@ LixNix remains useful deeper experimental prior art, especially for per-extruder
 
 | Capability | Upstream Orca official workflow | Snapmaker Orca V2.3.4 | LixNix branch | AMP current offline planner |
 | --- | --- | --- | --- | --- |
-| Per-extruder nozzle diameter | documented; CLI scratch mixed profile not exported in this run | not exported through this CLI probe | source-level support | tool matrix and packet metadata |
+| Per-extruder nozzle diameter | documented; GUI mixed-tool probe exported `0.2,0.4,0.6,0.8,0.8` | not exported through this CLI probe | source-level support | tool matrix and packet metadata |
 | Percentage-based line width support | documented and present in official profiles | not proven for mixed U1 output | source-level behavior observed indirectly | planned/recommended in packets |
 | Filament for Features assignment | documented; not exercised in CLI | not exercised | manual/per-feature infrastructure likely | automated region assignment offline |
-| Object/painting route | documented; not exercised in CLI | not exercised | likely relies on manual assignment | region bodies and packet mapping |
+| Object/painting route | object/tool assignment exercised in GUI | not exercised | likely relies on manual assignment | region bodies and packet mapping |
 | Per-tool layer height | known gap / feature request | not observed | source-level implementation appears present | planned through local-Z/resolution demand |
 | 3MF save/reopen preservation | not tested | not tested | not tested | sidecar bundle exists |
-| G-code multiple nozzle representation | not observed | not observed | not proven | no production G-code output |
-| T command emission | not observed for mixed output | startup/tool-prep only in control | not proven in tested paths | no production G-code output |
+| G-code multiple nozzle representation | observed in upstream GUI probe | not observed | not proven | no production G-code output |
+| T command emission | observed as `T0`/`T1`/`T2`/`T3` in upstream GUI probe | startup/tool-prep only in control | not proven in tested paths | no production G-code output |
 | Automated geometry-driven assignment | no | no | not identified | yes, offline |
 | Cost gating | no | no | not identified | yes, offline |
 | Fallback/confidence reasoning | no | no | not identified | yes |
@@ -197,16 +274,17 @@ LixNix remains useful deeper experimental prior art, especially for per-extruder
 
 Official Orca mixed nozzle-size support exists and is now the primary manual/static baseline. AMP should not claim Orca lacks mixed-nozzle support.
 
-This CLI probe did not produce real mixed-nozzle G-code from the official workflow. It did prove:
+The initial CLI probe did not produce real mixed-nozzle G-code from the official workflow, but the follow-up GUI probe did. Together they prove:
 
 - upstream Orca's toolchanger control can export G-code through CLI after satisfying the `G92 E0` layer-gcode requirement
+- upstream Orca's GUI workflow can export a four-object mixed-tool G-code representation containing `0.2`, `0.4`, `0.6`, and `0.8` nozzle values and `T0`/`T1`/`T2`/`T3` commands
 - Snapmaker Orca can export normal U1 `0.4` control G-code
 - the CLI scratch mixed-machine representation used here is insufficient or incomplete
 - no physical or touchscreen-compatible mixed-nozzle behavior is validated
 
 Next recommended action:
 
-Run the official Orca workflow through GUI/project setup, using Filament for Features or painting, then inspect the saved 3MF/project and exported G-code. Treat CLI scratch-profile failure as a representation limitation, not proof that the official GUI workflow does not work.
+Save/reopen the official Orca GUI mixed-tool project as 3MF and inspect whether tool/nozzle assignments persist. Treat CLI scratch-profile failure as a representation limitation, not proof that the official GUI workflow does not work.
 
 ## Required Non-Claims
 
