@@ -26,6 +26,19 @@ The `u1-adaptive-nozzle-strategy` branch has reached a behavior-neutral AMP chec
 - Converts packet-shaped entries into deterministic packet sidecar lookup data.
 - Does not change production slicing, G-code output, profiles, or Snapmaker validation.
 
+## AMP Milestone 002
+
+AMP now has an official Orca GUI workflow bridge: [Offline Planner and Official Orca Mixed-Nozzle Workflow Bridge](docs/milestones/AMP_Milestone_002_Offline_Planner_Official_Orca_Bridge.md).
+
+- Official Orca GUI mixed-nozzle baseline confirmed for the repaired four-region probe.
+- AMP offline planner packet exists and maps regions to U1 `0.2 / 0.4 / 0.6 / 0.8` tool classes.
+- C++ debug/sidecar contract tests exist.
+- Official Orca workflow bridge and G-code validator exist.
+- Fluidd/Klipper execution bundle is non-printable and preflight-gated.
+- Hardware preflight remains `not_ready`.
+
+Manual workflow guide: [AMP Official Orca Mixed-Nozzle Workflow Guide](docs/guides/AMP_Official_Orca_Mixed_Nozzle_Workflow_Guide.md).
+
 
 # Download
 
