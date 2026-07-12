@@ -169,6 +169,7 @@ def write_synthetic_3mf(
     root_model: bytes | None = None,
     object_model_data: bytes | None = None,
     object_model_members: list[tuple[str, bytes]] | None = None,
+    optional_members: list[tuple[str, bytes]] | None = None,
 ) -> None:
     if model_settings is None:
         model_settings = synthetic_model_settings()
@@ -189,6 +190,8 @@ def write_synthetic_3mf(
         archive.writestr(MODEL_SETTINGS, model_settings)
         archive.writestr(PROJECT_SETTINGS, json.dumps(project_settings))
         for member_name, payload in object_model_members:
+            archive.writestr(member_name, payload)
+        for member_name, payload in optional_members or []:
             archive.writestr(member_name, payload)
 
 
@@ -354,6 +357,64 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                     ObservationError, context.replace("[", r"\[")
                 ):
                     validate_report(report)
+
+    def test_serializers_reject_non_null_observer_authority_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            valid = observe_3mf(source)
+            cases = [
+                ("physical_nozzle_assignment", 1),
+                ("recommended_tool_class", "fine"),
+            ]
+            for field, value in cases:
+                for serializer in (serialize_json, serialize_markdown):
+                    report = copy.deepcopy(valid)
+                    report["objects"][0][field] = value
+                    with self.subTest(
+                        field=field, serializer=serializer.__name__
+                    ), self.assertRaisesRegex(
+                        ObservationError,
+                        rf"objects\[0\]\.{field} must be null",
+                    ):
+                        serializer(report)
+
+    def test_write_reports_rejects_authority_mutation_before_replacement(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            markdown_path = root / "report.md"
+            write_synthetic_3mf(source)
+            valid = observe_3mf(source)
+            for field, value in (
+                ("physical_nozzle_assignment", 1),
+                ("recommended_tool_class", "standard"),
+            ):
+                report = copy.deepcopy(valid)
+                report["objects"][0][field] = value
+                json_path.write_text("old json\n", encoding="utf-8")
+                markdown_path.write_text("old markdown\n", encoding="utf-8")
+
+                with self.subTest(field=field), self.assertRaisesRegex(
+                    ObservationError,
+                    rf"objects\[0\]\.{field} must be null",
+                ):
+                    write_reports(
+                        report,
+                        source_path=source,
+                        json_path=json_path,
+                        markdown_path=markdown_path,
+                    )
+
+                self.assertEqual(json_path.read_text(encoding="utf-8"), "old json\n")
+                self.assertEqual(
+                    markdown_path.read_text(encoding="utf-8"), "old markdown\n"
+                )
+                self.assertFalse(list(root.glob(".*.tmp")))
+                self.assertFalse(list(root.glob(".*.bak")))
 
     def test_validate_report_rejects_lone_surrogates_recursively(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1074,7 +1135,41 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertEqual(report["schema_version"], "0.1")
             self.assertEqual(report["source"]["sha256"], before)
             self.assertEqual(report["source"]["member_count"], 5)
+            self.assertEqual(report["source"]["plate_members"], [])
+            self.assertEqual(report["source"]["plate_thumbnail_members"], [])
             self.assertEqual(sha256(source), before)
+
+    def test_inventories_optional_plate_members_in_canonical_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "optional-plate-members.3mf"
+            write_synthetic_3mf(
+                source,
+                optional_members=[
+                    ("Metadata/plate_2.txt", b"metadata only"),
+                    ("metadata/PLATE_10.WEBP", b"image"),
+                    ("Metadata/nested/plate_1.JpEg", b"image"),
+                    ("Metadata/not_plate_3.png", b"excluded"),
+                    ("Other/plate_4.png", b"excluded"),
+                ],
+            )
+
+            observed = observe_3mf(source)["source"]
+
+            self.assertEqual(
+                observed["plate_members"],
+                [
+                    "Metadata/nested/plate_1.JpEg",
+                    "metadata/PLATE_10.WEBP",
+                    "Metadata/plate_2.txt",
+                ],
+            )
+            self.assertEqual(
+                observed["plate_thumbnail_members"],
+                [
+                    "Metadata/nested/plate_1.JpEg",
+                    "metadata/PLATE_10.WEBP",
+                ],
+            )
 
     def test_task_2_contract_observes_metadata_without_assigning_a_nozzle(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1661,21 +1756,100 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             ):
                 observe_3mf(source)
 
-    def test_rejects_root_object_referencing_multiple_model_members(self) -> None:
+    def test_aggregates_components_across_model_members_in_canonical_order(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "multiple-object-models.3mf"
             root_model = synthetic_root_model(
                 component_references=[
+                    (
+                        "/3D/Objects/zeta.model",
+                        "4",
+                        "1 0 0 0 1 0 0 0 1 20 0 0",
+                    ),
+                    ("/3D/Objects/alpha.model", "2", None),
+                ]
+            )
+            alpha = object_model_objects_xml(
+                [(2, [([(0, 0, 0), (2, 0, 0), (0, 3, 0)], [(0, 1, 2)])])]
+            )
+            zeta = object_model_objects_xml(
+                [(4, [([(0, 0, 0), (1, 0, 0), (0, 1, 5)], [(0, 1, 2)])])]
+            )
+            opened_members: list[str] = []
+            real_open = zipfile.ZipFile.open
+
+            def tracking_open(
+                archive: zipfile.ZipFile,
+                name: str | zipfile.ZipInfo,
+                mode: str = "r",
+                pwd: bytes | None = None,
+                *,
+                force_zip64: bool = False,
+            ) -> object:
+                member_name = (
+                    name.filename if isinstance(name, zipfile.ZipInfo) else name
+                )
+                if member_name.startswith("3D/Objects/"):
+                    opened_members.append(member_name)
+                return real_open(
+                    archive, name, mode, pwd, force_zip64=force_zip64
+                )
+
+            write_synthetic_3mf(
+                source,
+                root_model=root_model,
+                object_model_members=[
+                    ("3D/Objects/zeta.model", zeta),
+                    ("3D/Objects/alpha.model", alpha),
+                ],
+            )
+
+            with mock.patch.object(zipfile.ZipFile, "open", new=tracking_open):
+                observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(
+                observed["source_model_members"],
+                ["3D/Objects/alpha.model", "3D/Objects/zeta.model"],
+            )
+            self.assertIsNone(observed["source_model_member"])
+            self.assertEqual(
+                opened_members,
+                ["3D/Objects/alpha.model", "3D/Objects/zeta.model"],
+            )
+            self.assertEqual(observed["geometry"]["vertex_count"], 6)
+            self.assertEqual(observed["geometry"]["triangle_count"], 2)
+            self.assertEqual(observed["geometry"]["bounds"]["min"], [0.0, 0.0, 0.0])
+            self.assertEqual(observed["geometry"]["bounds"]["max"], [21.0, 3.0, 5.0])
+
+    def test_counts_each_shared_mesh_component_transform_occurrence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "shared-mesh-occurrences.3mf"
+            root_model = synthetic_root_model(
+                component_references=[
                     ("/3D/Objects/detail.model", "1", None),
-                    ("/3D/Objects/other.model", "2", None),
+                    (
+                        "/3D/Objects/detail.model",
+                        "1",
+                        "1 0 0 0 1 0 0 0 1 50 0 0",
+                    ),
                 ]
             )
             write_synthetic_3mf(source, root_model=root_model)
 
-            with self.assertRaisesRegex(
-                ObservationError, "object 2 references multiple model members"
-            ):
-                observe_3mf(source)
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(
+                observed["source_model_members"], ["3D/Objects/detail.model"]
+            )
+            self.assertEqual(
+                observed["source_model_member"], "3D/Objects/detail.model"
+            )
+            self.assertEqual(observed["geometry"]["vertex_count"], 6)
+            self.assertEqual(observed["geometry"]["triangle_count"], 2)
+            self.assertEqual(observed["geometry"]["bounds"]["min"], [0.0, 0.0, 0.0])
+            self.assertEqual(observed["geometry"]["bounds"]["max"], [60.0, 5.0, 2.0])
 
     def test_rejects_duplicate_object_id(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1830,6 +2004,180 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertIsNone(report["objects"][0]["resolved_material"])
             self.assertEqual(report["objects"][0]["warnings"], [])
 
+    def test_part_assignments_inherit_object_slot_and_sort_by_part_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "inherited-part-extruders.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<part id="1" subtype="normal_part"/>',
+                b'''<part id="9" subtype="normal_part"/>
+    <part id="3" subtype="normal_part"><metadata key="extruder" value="0"/></part>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(
+                observed["part_assignments"],
+                [
+                    {
+                        "part_id": 3,
+                        "explicit_material_assignment": None,
+                        "effective_material_assignment": 2,
+                        "resolved_material": observed["resolved_material"],
+                    },
+                    {
+                        "part_id": 9,
+                        "explicit_material_assignment": None,
+                        "effective_material_assignment": 2,
+                        "resolved_material": observed["resolved_material"],
+                    },
+                ],
+            )
+            self.assertEqual(observed["material_assignment"], 2)
+
+    def test_part_override_replaces_object_assignment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "part-override.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<part id="1" subtype="normal_part"/>',
+                b'''<part id="1" subtype="normal_part">
+      <metadata key="extruder" value="1"/>
+    </part>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(observed["material_assignment"], 1)
+            self.assertEqual(observed["resolved_material"]["slot"], 1)
+            self.assertEqual(
+                observed["part_assignments"][0]["explicit_material_assignment"], 1
+            )
+            self.assertEqual(
+                observed["part_assignments"][0]["effective_material_assignment"],
+                1,
+            )
+
+    def test_mixed_effective_part_slots_clear_object_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "mixed-parts.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<part id="1" subtype="normal_part"/>',
+                b'''<part id="8" subtype="normal_part"/>
+    <part id="2" subtype="normal_part"><metadata key="extruder" value="1"/></part>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(
+                [
+                    part["effective_material_assignment"]
+                    for part in observed["part_assignments"]
+                ],
+                [1, 2],
+            )
+            self.assertIsNone(observed["material_assignment"])
+            self.assertIsNone(observed["resolved_material"])
+            self.assertEqual(
+                observed["warnings"],
+                ["mixed effective part material assignments: 1, 2"],
+            )
+
+    def test_object_assignment_is_preserved_when_object_has_no_parts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "no-parts.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'    <part id="1" subtype="normal_part"/>\n', b""
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(observed["part_count"], 0)
+            self.assertEqual(observed["part_assignments"], [])
+            self.assertEqual(observed["material_assignment"], 2)
+            self.assertEqual(observed["resolved_material"]["slot"], 2)
+
+    def test_rejects_malformed_part_identity_and_extruder(self) -> None:
+        base = synthetic_model_settings()
+        cases = [
+            (
+                "missing part id",
+                base.replace(b'<part id="1"', b"<part"),
+                "missing object 2 part id",
+            ),
+            (
+                "nonpositive part id",
+                base.replace(b'<part id="1"', b'<part id="0"'),
+                "object 2 part id must be positive: 0",
+            ),
+            (
+                "malformed part extruder",
+                base.replace(
+                    b'<part id="1" subtype="normal_part"/>',
+                    b'<part id="1"><metadata key="extruder" value="bad"/></part>',
+                ),
+                "invalid object 2 part 1 extruder: 'bad'",
+            ),
+            (
+                "negative part extruder",
+                base.replace(
+                    b'<part id="1" subtype="normal_part"/>',
+                    b'<part id="1"><metadata key="extruder" value="-1"/></part>',
+                ),
+                "object 2 part 1 extruder must be nonnegative: -1",
+            ),
+        ]
+        for label, model_settings, message in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / "malformed-part.3mf"
+                write_synthetic_3mf(source, model_settings=model_settings)
+
+                with self.assertRaisesRegex(ObservationError, message):
+                    observe_3mf(source)
+
+    def test_rejects_duplicate_part_identity_within_an_object(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "duplicate-part.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<part id="1" subtype="normal_part"/>',
+                b'<part id="1"/><part id="1"/>',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            with self.assertRaisesRegex(
+                ObservationError, "duplicate part id 1 in object 2"
+            ):
+                observe_3mf(source)
+
+    def test_warns_for_unresolved_effective_part_slots_in_slot_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "unresolved-part-slots.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<part id="1" subtype="normal_part"/>',
+                b'''<part id="2"><metadata key="extruder" value="4"/></part>
+    <part id="1"><metadata key="extruder" value="3"/></part>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(
+                observed["warnings"],
+                [
+                    "mixed effective part material assignments: 3, 4",
+                    "effective part material assignment 3 does not resolve to a configured slot",
+                    "effective part material assignment 4 does not resolve to a configured slot",
+                ],
+            )
+            self.assertTrue(
+                all(
+                    part["resolved_material"] is None
+                    for part in observed["part_assignments"]
+                )
+            )
+
     def test_rejects_duplicate_plate_id(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "duplicate-plate.3mf"
@@ -1855,19 +2203,113 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             ):
                 observe_3mf(source)
 
-    def test_rejects_ambiguous_plate_membership(self) -> None:
+    def test_observes_multi_plate_and_multi_instance_membership(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            source = Path(temp_dir) / "ambiguous-membership.3mf"
-            second_plate = b'''<plate><metadata key="plater_id" value="2"/><metadata key="plater_name" value="Other"/><model_instance><metadata key="object_id" value="2"/></model_instance></plate>'''
+            source = Path(temp_dir) / "multi-plate-membership.3mf"
             model_settings = synthetic_model_settings().replace(
-                b"</config>", second_plate + b"</config>"
+                b'''<plate><metadata key="plater_id" value="1"/><metadata key="plater_name" value="Detail Plate"/><model_instance><metadata key="object_id" value="2"/></model_instance></plate>''',
+                b'''<plate>
+    <metadata key="plater_id" value="2"/>
+    <metadata key="plater_name" value="Zulu Plate"/>
+    <model_instance><metadata key="instance_id" value="1"/><metadata key="object_id" value="2"/></model_instance>
+  </plate>
+  <plate>
+    <metadata key="plater_id" value="1"/>
+    <metadata key="plater_name" value="Alpha Plate"/>
+    <model_instance><metadata key="object_id" value="2"/><metadata key="instance_id" value="2"/></model_instance>
+    <model_instance><metadata key="instance_id" value="0"/><metadata key="object_id" value="2"/></model_instance>
+  </plate>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            report = observe_3mf(source)
+            observed = report["objects"][0]
+
+            self.assertEqual(
+                report["plates"],
+                [
+                    {
+                        "plate_id": 1,
+                        "name": "Alpha Plate",
+                        "object_ids": [2],
+                        "instances": [
+                            {"object_id": 2, "instance_id": 0},
+                            {"object_id": 2, "instance_id": 2},
+                        ],
+                    },
+                    {
+                        "plate_id": 2,
+                        "name": "Zulu Plate",
+                        "object_ids": [2],
+                        "instances": [{"object_id": 2, "instance_id": 1}],
+                    },
+                ],
+            )
+            self.assertEqual(observed["plate_ids"], [1, 2])
+            self.assertEqual(observed["plate_names"], ["Alpha Plate", "Zulu Plate"])
+            self.assertIsNone(observed["plate_id"])
+            self.assertIsNone(observed["plate_name"])
+            self.assertEqual(
+                observed["instances"],
+                [
+                    {
+                        "plate_id": 1,
+                        "plate_name": "Alpha Plate",
+                        "instance_id": 0,
+                    },
+                    {
+                        "plate_id": 1,
+                        "plate_name": "Alpha Plate",
+                        "instance_id": 2,
+                    },
+                    {
+                        "plate_id": 2,
+                        "plate_name": "Zulu Plate",
+                        "instance_id": 1,
+                    },
+                ],
+            )
+            self.assertEqual(
+                observed["warnings"],
+                ["object appears on multiple plates: 1, 2"],
+            )
+
+    def test_rejects_duplicate_instance_identity_within_a_plate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "duplicate-instance.3mf"
+            duplicate = b'''<model_instance><metadata key="object_id" value="2"/><metadata key="instance_id" value="0"/></model_instance>'''
+            model_settings = synthetic_model_settings().replace(
+                b'<model_instance><metadata key="object_id" value="2"/></model_instance>',
+                duplicate + duplicate,
             )
             write_synthetic_3mf(source, model_settings=model_settings)
 
             with self.assertRaisesRegex(
-                ObservationError, "ambiguous plate membership for object id 2: 1, 2"
+                ObservationError,
+                "duplicate instance identity on plate 1: object 2, instance 0",
             ):
                 observe_3mf(source)
+
+    def test_rejects_malformed_and_negative_instance_ids(self) -> None:
+        base = synthetic_model_settings().replace(
+            b'<metadata key="object_id" value="2"/>',
+            b'<metadata key="object_id" value="2"/><metadata key="instance_id" value="VALUE"/>',
+        )
+        cases = [
+            ("malformed", base.replace(b"VALUE", b"bad"), "invalid plate 1 instance id: 'bad'"),
+            (
+                "negative",
+                base.replace(b"VALUE", b"-1"),
+                "plate 1 instance id must be nonnegative: -1",
+            ),
+        ]
+        for label, model_settings, message in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / "invalid-instance.3mf"
+                write_synthetic_3mf(source, model_settings=model_settings)
+
+                with self.assertRaisesRegex(ObservationError, message):
+                    observe_3mf(source)
 
     def test_rejects_malformed_explicit_extruder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2104,7 +2546,9 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertIsNone(report["objects"][0]["resolved_material"])
             self.assertEqual(
                 report["objects"][0]["warnings"],
-                ["material assignment 3 does not resolve to a configured slot"],
+                [
+                    "effective part material assignment 3 does not resolve to a configured slot"
+                ],
             )
 
     def test_rejects_missing_required_member(self) -> None:

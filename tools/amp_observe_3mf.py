@@ -331,6 +331,31 @@ def object_model_member_lookup(
     return result
 
 
+def optional_plate_member_inventory(
+    infos: list[zipfile.ZipInfo],
+) -> tuple[list[str], list[str]]:
+    plate_members = []
+    for info in infos:
+        segments = info.filename.split("/")
+        if (
+            len(segments) < 2
+            or ascii_case_insensitive_key(segments[0]) != "metadata"
+            or not ascii_case_insensitive_key(segments[-1]).startswith("plate_")
+        ):
+            continue
+        plate_members.append(info.filename)
+    plate_members.sort(key=lambda name: (ascii_case_insensitive_key(name), name))
+    thumbnail_extensions = {"png", "jpg", "jpeg", "webp"}
+    plate_thumbnail_members = [
+        name
+        for name in plate_members
+        if "." in name.rsplit("/", 1)[-1]
+        and ascii_case_insensitive_key(name.rsplit(".", 1)[-1])
+        in thumbnail_extensions
+    ]
+    return plate_members, plate_thumbnail_members
+
+
 def parse_root_object_references(
     data: bytes,
 ) -> dict[int, tuple[ObjectModelReference, ...]]:
@@ -395,13 +420,17 @@ def parse_root_object_references(
                     transform=transform,
                 )
             )
-        canonical_keys = {reference.canonical_key for reference in references}
-        if len(canonical_keys) > 1:
-            raise ObservationError(
-                f"object {object_id} references multiple model members"
-            )
         if references:
-            result[object_id] = tuple(references)
+            result[object_id] = tuple(
+                sorted(
+                    references,
+                    key=lambda reference: (
+                        reference.canonical_key,
+                        reference.object_id,
+                        reference.transform or (),
+                    ),
+                )
+            )
     return result
 
 
@@ -565,6 +594,39 @@ def stream_geometry(
     }
 
 
+def merge_geometry_summaries(
+    summaries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    bounds = [summary["bounds"] for summary in summaries if summary["bounds"]]
+    minimum = (
+        [min(item["min"][axis] for item in bounds) for axis in range(3)]
+        if bounds
+        else None
+    )
+    maximum = (
+        [max(item["max"][axis] for item in bounds) for axis in range(3)]
+        if bounds
+        else None
+    )
+    return {
+        "vertex_count": sum(summary["vertex_count"] for summary in summaries),
+        "triangle_count": sum(
+            summary["triangle_count"] for summary in summaries
+        ),
+        "bounds": (
+            {"min": minimum, "max": maximum}
+            if minimum is not None and maximum is not None
+            else None
+        ),
+        "dimensions": (
+            [high - low for low, high in zip(minimum, maximum)]
+            if minimum is not None and maximum is not None
+            else None
+        ),
+        "streamed": True,
+    }
+
+
 def parse_project_settings(
     payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
@@ -626,7 +688,7 @@ def parse_model_settings(
             raise ObservationError(f"duplicate object id: {object_id}")
         seen_ids.add(object_id)
         metadata = metadata_map(node)
-        assignment = None
+        object_assignment = None
         if "extruder" in metadata:
             parsed_assignment = parse_required_int(
                 metadata["extruder"],
@@ -634,13 +696,81 @@ def parse_model_settings(
                 minimum=0,
                 domain="nonnegative",
             )
-            assignment = None if parsed_assignment == 0 else parsed_assignment
+            object_assignment = (
+                None if parsed_assignment == 0 else parsed_assignment
+            )
+        part_assignments: list[dict[str, Any]] = []
+        seen_part_ids: set[int] = set()
+        for part in (child for child in node if local_name(child.tag) == "part"):
+            part_id = parse_required_int(
+                part.attrib.get("id"),
+                f"object {object_id} part id",
+                minimum=1,
+                domain="positive",
+            )
+            if part_id in seen_part_ids:
+                raise ObservationError(
+                    f"duplicate part id {part_id} in object {object_id}"
+                )
+            seen_part_ids.add(part_id)
+            part_metadata = metadata_map(part)
+            explicit_assignment = None
+            if "extruder" in part_metadata:
+                parsed_assignment = parse_required_int(
+                    part_metadata["extruder"],
+                    f"object {object_id} part {part_id} extruder",
+                    minimum=0,
+                    domain="nonnegative",
+                )
+                if parsed_assignment > 0:
+                    explicit_assignment = parsed_assignment
+            effective_assignment = explicit_assignment or object_assignment
+            part_assignments.append(
+                {
+                    "part_id": part_id,
+                    "explicit_material_assignment": explicit_assignment,
+                    "effective_material_assignment": effective_assignment,
+                    "resolved_material": material_by_slot.get(
+                        effective_assignment
+                    ),
+                }
+            )
+        part_assignments.sort(key=lambda item: item["part_id"])
+        effective_slots = sorted(
+            {
+                item["effective_material_assignment"]
+                for item in part_assignments
+                if item["effective_material_assignment"] is not None
+            }
+        )
+        assignment = object_assignment
+        if part_assignments:
+            assignment = effective_slots[0] if len(effective_slots) == 1 else None
         name = metadata.get("name", f"object_{object_id}")
         tokens = sorted(set(re.findall(r"[a-z0-9]+", Path(name).stem.lower())))
         object_warnings = []
-        if assignment is not None and assignment not in material_by_slot:
+        if len(effective_slots) > 1:
             object_warnings.append(
-                f"material assignment {assignment} does not resolve to a configured slot"
+                "mixed effective part material assignments: "
+                + ", ".join(str(slot) for slot in effective_slots)
+            )
+        unresolved_slots = (
+            [slot for slot in effective_slots if slot not in material_by_slot]
+            if part_assignments
+            else (
+                [assignment]
+                if assignment is not None and assignment not in material_by_slot
+                else []
+            )
+        )
+        for slot in unresolved_slots:
+            object_warnings.append(
+                (
+                    f"effective part material assignment {slot}"
+                    if part_assignments
+                    else f"material assignment {slot}"
+                )
+                + " does not resolve to a configured slot"
             )
         objects.append(
             {
@@ -648,10 +778,13 @@ def parse_model_settings(
                 "name": name,
                 "plate_id": None,
                 "plate_name": None,
+                "plate_ids": [],
+                "plate_names": [],
+                "instances": [],
                 "source_model_member": None,
-                "part_count": sum(
-                    1 for child in node if local_name(child.tag) == "part"
-                ),
+                "source_model_members": [],
+                "part_count": len(part_assignments),
+                "part_assignments": part_assignments,
                 "material_assignment": assignment,
                 "resolved_material": material_by_slot.get(assignment),
                 "physical_nozzle_assignment": None,
@@ -676,53 +809,127 @@ def parse_model_settings(
         if plate_id in seen_plate_ids:
             raise ObservationError(f"duplicate plate id: {plate_id}")
         seen_plate_ids.add(plate_id)
-        object_ids = sorted(
-            parse_required_int(
-                item.attrib.get("value"),
-                f"plate {plate_id} object id",
-                minimum=1,
-                domain="positive",
-            )
-            for item in node.iter()
-            if local_name(item.tag) == "metadata"
-            and item.attrib.get("key") == "object_id"
-        )
         plate_name = (
             metadata["plater_name"]
             if "plater_name" in metadata
             else metadata.get("name")
         )
+        instances: list[dict[str, Any]] = []
+        seen_instance_identities: set[tuple[int, int | None]] = set()
+        for instance_node in (
+            item for item in node.iter() if local_name(item.tag) == "model_instance"
+        ):
+            instance_metadata = metadata_map(instance_node)
+            object_id_value = next(
+                (
+                    child.attrib.get("value")
+                    for child in instance_node
+                    if local_name(child.tag) == "metadata"
+                    and child.attrib.get("key") == "object_id"
+                ),
+                None,
+            )
+            object_id = parse_required_int(
+                object_id_value,
+                f"plate {plate_id} object id",
+                minimum=1,
+                domain="positive",
+            )
+            instance_id = None
+            if "instance_id" in instance_metadata:
+                instance_id_value = next(
+                    (
+                        child.attrib.get("value")
+                        for child in instance_node
+                        if local_name(child.tag) == "metadata"
+                        and child.attrib.get("key") == "instance_id"
+                    ),
+                    None,
+                )
+                instance_id = parse_required_int(
+                    instance_id_value,
+                    f"plate {plate_id} instance id",
+                    minimum=0,
+                    domain="nonnegative",
+                )
+            identity = (object_id, instance_id)
+            if identity in seen_instance_identities:
+                raise ObservationError(
+                    "duplicate instance identity on plate "
+                    f"{plate_id}: object {object_id}, instance "
+                    f"{instance_id if instance_id is not None else 'null'}"
+                )
+            seen_instance_identities.add(identity)
+            instances.append(
+                {"object_id": object_id, "instance_id": instance_id}
+            )
+        instances.sort(
+            key=lambda item: (
+                item["object_id"],
+                item["instance_id"] is None,
+                item["instance_id"] if item["instance_id"] is not None else 0,
+            )
+        )
         plates.append(
             {
                 "plate_id": plate_id,
                 "name": plate_name,
-                "object_ids": object_ids,
+                "object_ids": sorted(
+                    {instance["object_id"] for instance in instances}
+                ),
+                "instances": instances,
             }
         )
     object_by_id = {item["object_id"]: item for item in objects}
-    plate_by_object: dict[int, dict[str, Any]] = {}
+    plates.sort(key=lambda item: (item["plate_id"], item["name"] or ""))
     for plate in plates:
-        for object_id in plate["object_ids"]:
+        for instance in plate["instances"]:
+            object_id = instance["object_id"]
             if object_id not in object_by_id:
                 raise ObservationError(
                     f"plate {plate['plate_id']} references unknown object id: {object_id}"
                 )
-            previous = plate_by_object.get(object_id)
-            if previous is not None and previous["plate_id"] != plate["plate_id"]:
-                plate_ids = sorted((previous["plate_id"], plate["plate_id"]))
-                raise ObservationError(
-                    f"ambiguous plate membership for object id {object_id}: "
-                    f"{plate_ids[0]}, {plate_ids[1]}"
-                )
-            plate_by_object[object_id] = plate
+            object_by_id[object_id]["instances"].append(
+                {
+                    "plate_id": plate["plate_id"],
+                    "plate_name": plate["name"],
+                    "instance_id": instance["instance_id"],
+                }
+            )
     for item in objects:
-        plate = plate_by_object.get(item["object_id"])
-        if plate:
-            item["plate_id"] = plate["plate_id"]
-            item["plate_name"] = plate["name"]
+        item["instances"].sort(
+            key=lambda instance: (
+                instance["plate_id"],
+                instance["instance_id"] is None,
+                (
+                    instance["instance_id"]
+                    if instance["instance_id"] is not None
+                    else 0
+                ),
+                instance["plate_name"] or "",
+            )
+        )
+        item["plate_ids"] = sorted(
+            {instance["plate_id"] for instance in item["instances"]}
+        )
+        item["plate_names"] = sorted(
+            {
+                instance["plate_name"]
+                for instance in item["instances"]
+                if instance["plate_name"] is not None
+            }
+        )
+        if len(item["plate_ids"]) == 1:
+            item["plate_id"] = item["plate_ids"][0]
+            item["plate_name"] = item["instances"][0]["plate_name"]
+        elif len(item["plate_ids"]) > 1:
+            item["warnings"].append(
+                "object appears on multiple plates: "
+                + ", ".join(str(plate_id) for plate_id in item["plate_ids"])
+            )
     return (
         sorted(objects, key=lambda item: (item["object_id"], item["name"])),
-        sorted(plates, key=lambda item: (item["plate_id"], item["name"] or "")),
+        plates,
         [],
     )
 
@@ -744,34 +951,60 @@ def observe_3mf(source: Path) -> dict[str, Any]:
                 archive.read(MODEL_SETTINGS), materials
             )
             member_lookup = object_model_member_lookup(infos)
+            plate_members, plate_thumbnail_members = (
+                optional_plate_member_inventory(infos)
+            )
             for item in objects:
                 references = root_object_references.get(item["object_id"])
                 if references is None:
                     continue
-                referenced_name = references[0].member_name
-                entries = member_lookup.get(references[0].canonical_key, [])
-                if not entries:
-                    raise ObservationError(
-                        "missing referenced object-model member: "
-                        f"{referenced_name}"
+                references_by_member: dict[
+                    str, list[ObjectModelReference]
+                ] = {}
+                for reference in references:
+                    references_by_member.setdefault(
+                        reference.canonical_key, []
+                    ).append(reference)
+                geometry_summaries = []
+                for canonical_key in sorted(references_by_member):
+                    member_references = tuple(
+                        references_by_member[canonical_key]
                     )
-                if len(entries) > 1:
-                    entry_names = {entry.filename for entry in entries}
-                    if len(entry_names) == 1:
+                    referenced_name = member_references[0].member_name
+                    entries = member_lookup.get(canonical_key, [])
+                    if not entries:
                         raise ObservationError(
-                            "duplicate referenced object-model member: "
+                            "missing referenced object-model member: "
                             f"{referenced_name}"
                         )
-                    raise ObservationError(
-                        "ambiguous canonical object-model member: "
-                        + ", ".join(sorted(entry_names))
-                    )
-                member_info = entries[0]
-                item["source_model_member"] = member_info.filename
-                with archive.open(member_info, "r") as handle:
-                    item["geometry"] = stream_geometry(
-                        handle, member_info.filename, references
-                    )
+                    if len(entries) > 1:
+                        entry_names = {entry.filename for entry in entries}
+                        if len(entry_names) == 1:
+                            raise ObservationError(
+                                "duplicate referenced object-model member: "
+                                f"{referenced_name}"
+                            )
+                        raise ObservationError(
+                            "ambiguous canonical object-model member: "
+                            + ", ".join(sorted(entry_names))
+                        )
+                    member_info = entries[0]
+                    item["source_model_members"].append(member_info.filename)
+                    with archive.open(member_info, "r") as handle:
+                        geometry_summaries.append(
+                            stream_geometry(
+                                handle,
+                                member_info.filename,
+                                member_references,
+                            )
+                        )
+                if len(item["source_model_members"]) == 1:
+                    item["source_model_member"] = item[
+                        "source_model_members"
+                    ][0]
+                item["geometry"] = merge_geometry_summaries(
+                    geometry_summaries
+                )
             warnings = sorted(root_warnings + project_warnings + model_warnings)
             return {
                 "schema_version": SCHEMA_VERSION,
@@ -782,6 +1015,8 @@ def observe_3mf(source: Path) -> dict[str, Any]:
                     "member_count": len(infos),
                     "uncompressed_member_bytes": sum(item.file_size for item in infos),
                     "required_members": sorted(REQUIRED_MEMBERS),
+                    "plate_members": plate_members,
+                    "plate_thumbnail_members": plate_thumbnail_members,
                 },
                 "project": project,
                 "physical_tools": physical_tools,
@@ -863,6 +1098,30 @@ def validate_material(value: Any, context: str) -> None:
     require_string(material["color"], f"{context}.color", nullable=True)
 
 
+def validate_part_assignment(value: Any, context: str) -> None:
+    assignment = require_mapping(
+        value,
+        context,
+        {
+            "part_id",
+            "explicit_material_assignment",
+            "effective_material_assignment",
+            "resolved_material",
+        },
+    )
+    require_integer(assignment["part_id"], f"{context}.part_id", minimum=1)
+    for field in (
+        "explicit_material_assignment",
+        "effective_material_assignment",
+    ):
+        if assignment[field] is not None:
+            require_integer(assignment[field], f"{context}.{field}", minimum=1)
+    if assignment["resolved_material"] is not None:
+        validate_material(
+            assignment["resolved_material"], f"{context}.resolved_material"
+        )
+
+
 def validate_number_vector(value: Any, context: str) -> None:
     items = require_list(value, context)
     if len(items) != 3:
@@ -932,6 +1191,8 @@ def validate_report(report: dict[str, Any]) -> None:
             "member_count",
             "uncompressed_member_bytes",
             "required_members",
+            "plate_members",
+            "plate_thumbnail_members",
         },
     )
     require_string(source["file_name"], "source.file_name")
@@ -939,6 +1200,10 @@ def validate_report(report: dict[str, Any]) -> None:
     for field in ("compressed_size", "member_count", "uncompressed_member_bytes"):
         require_integer(source[field], f"source.{field}")
     require_string_list(source["required_members"], "source.required_members")
+    require_string_list(source["plate_members"], "source.plate_members")
+    require_string_list(
+        source["plate_thumbnail_members"], "source.plate_thumbnail_members"
+    )
 
     project = require_mapping(
         report["project"],
@@ -980,7 +1245,9 @@ def validate_report(report: dict[str, Any]) -> None:
     plates = require_list(report["plates"], "plates")
     for index, value in enumerate(plates):
         context = f"plates[{index}]"
-        plate = require_mapping(value, context, {"plate_id", "name", "object_ids"})
+        plate = require_mapping(
+            value, context, {"plate_id", "name", "object_ids", "instances"}
+        )
         require_integer(plate["plate_id"], f"{context}.plate_id", minimum=1)
         require_string(plate["name"], f"{context}.name", nullable=True)
         object_ids = require_list(plate["object_ids"], f"{context}.object_ids")
@@ -990,6 +1257,22 @@ def validate_report(report: dict[str, Any]) -> None:
                 f"{context}.object_ids[{object_index}]",
                 minimum=1,
             )
+        instances = require_list(plate["instances"], f"{context}.instances")
+        for instance_index, value in enumerate(instances):
+            instance_context = f"{context}.instances[{instance_index}]"
+            instance = require_mapping(
+                value, instance_context, {"object_id", "instance_id"}
+            )
+            require_integer(
+                instance["object_id"],
+                f"{instance_context}.object_id",
+                minimum=1,
+            )
+            if instance["instance_id"] is not None:
+                require_integer(
+                    instance["instance_id"],
+                    f"{instance_context}.instance_id",
+                )
 
     objects = require_list(report["objects"], "objects")
     object_fields = {
@@ -997,8 +1280,13 @@ def validate_report(report: dict[str, Any]) -> None:
         "name",
         "plate_id",
         "plate_name",
+        "plate_ids",
+        "plate_names",
+        "instances",
         "source_model_member",
+        "source_model_members",
         "part_count",
+        "part_assignments",
         "material_assignment",
         "resolved_material",
         "physical_nozzle_assignment",
@@ -1015,12 +1303,51 @@ def validate_report(report: dict[str, Any]) -> None:
         if item["plate_id"] is not None:
             require_integer(item["plate_id"], f"{context}.plate_id", minimum=1)
         require_string(item["plate_name"], f"{context}.plate_name", nullable=True)
+        plate_ids = require_list(item["plate_ids"], f"{context}.plate_ids")
+        for plate_index, plate_id in enumerate(plate_ids):
+            require_integer(
+                plate_id, f"{context}.plate_ids[{plate_index}]", minimum=1
+            )
+        require_string_list(item["plate_names"], f"{context}.plate_names")
+        instances = require_list(item["instances"], f"{context}.instances")
+        for instance_index, value in enumerate(instances):
+            instance_context = f"{context}.instances[{instance_index}]"
+            instance = require_mapping(
+                value,
+                instance_context,
+                {"plate_id", "plate_name", "instance_id"},
+            )
+            require_integer(
+                instance["plate_id"],
+                f"{instance_context}.plate_id",
+                minimum=1,
+            )
+            require_string(
+                instance["plate_name"],
+                f"{instance_context}.plate_name",
+                nullable=True,
+            )
+            if instance["instance_id"] is not None:
+                require_integer(
+                    instance["instance_id"],
+                    f"{instance_context}.instance_id",
+                )
         require_string(
             item["source_model_member"],
             f"{context}.source_model_member",
             nullable=True,
         )
+        require_string_list(
+            item["source_model_members"], f"{context}.source_model_members"
+        )
         require_integer(item["part_count"], f"{context}.part_count")
+        part_assignments = require_list(
+            item["part_assignments"], f"{context}.part_assignments"
+        )
+        for part_index, assignment in enumerate(part_assignments):
+            validate_part_assignment(
+                assignment, f"{context}.part_assignments[{part_index}]"
+            )
         if item["material_assignment"] is not None:
             require_integer(
                 item["material_assignment"],
@@ -1029,17 +1356,12 @@ def validate_report(report: dict[str, Any]) -> None:
             )
         if item["resolved_material"] is not None:
             validate_material(item["resolved_material"], f"{context}.resolved_material")
-        if item["physical_nozzle_assignment"] is not None:
-            require_integer(
-                item["physical_nozzle_assignment"],
-                f"{context}.physical_nozzle_assignment",
-                minimum=1,
-            )
-        require_string(
-            item["recommended_tool_class"],
-            f"{context}.recommended_tool_class",
-            nullable=True,
-        )
+        for field in (
+            "physical_nozzle_assignment",
+            "recommended_tool_class",
+        ):
+            if item[field] is not None:
+                invalid_report(f"{context}.{field}", "must be null")
         require_string_list(
             item["semantic_name_tokens"], f"{context}.semantic_name_tokens"
         )
