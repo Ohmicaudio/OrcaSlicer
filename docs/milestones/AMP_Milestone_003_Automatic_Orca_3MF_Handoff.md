@@ -214,6 +214,8 @@ Observed G-code evidence:
 
 The three warnings are the existing extra unused fifth tool slot, shared/global layer-height limitations in the official Orca baseline, and the shared mixed-probe process ID. They do not invalidate the region/tool/nozzle mapping result.
 
+The automatic output was also compared with the earlier manually configured official Orca baseline. Layer count, tool commands, extrusion moves, travel moves, positive E, extrusion-role counts, and the M73-derived time estimate are identical. See `docs/benchmarks/AMP_Orca_3MF_Handoff_Parity_001.md`.
+
 ## Fail-Closed Behavior
 
 Generation stops without replacing an existing output when it encounters:
