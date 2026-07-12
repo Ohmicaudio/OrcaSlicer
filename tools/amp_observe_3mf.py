@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -127,17 +128,34 @@ def validate_nullable_string_entries(
     return validated
 
 
-def validate_nozzle_entries(values: list[Any], warnings: list[str]) -> list[str]:
-    validated: list[str] = []
+def validate_nozzle_entries(
+    values: list[Any], warnings: list[str]
+) -> list[str | None]:
+    validated: list[str | None] = []
     for slot, value in enumerate(values, start=1):
         is_numeric = isinstance(value, (int, float)) and not isinstance(value, bool)
-        if isinstance(value, str) or is_numeric:
+        reason = None
+        if not isinstance(value, str) and not is_numeric:
+            reason = json_value_kind(value)
+        else:
+            candidate = value.strip() if isinstance(value, str) else str(value)
+            try:
+                diameter = Decimal(candidate)
+            except InvalidOperation:
+                reason = "nonnumeric string"
+            else:
+                if not diameter.is_finite():
+                    reason = "non-finite value"
+                elif diameter <= 0:
+                    reason = "nonpositive value"
+        if reason is None:
             validated.append(str(value))
             continue
         warnings.append(
-            f"project nozzle_diameter slot {slot} must be a string or numeric scalar; "
-            f"got {json_value_kind(value)}"
+            f"project nozzle_diameter slot {slot} must be a positive finite "
+            f"numeric diameter; got {reason}"
         )
+        validated.append(None)
     return validated
 
 

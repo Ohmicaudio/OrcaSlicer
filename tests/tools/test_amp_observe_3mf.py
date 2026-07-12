@@ -455,7 +455,7 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                 ],
             )
 
-    def test_warns_and_omits_invalid_nozzle_entries(self) -> None:
+    def test_warns_and_preserves_invalid_nozzle_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "invalid-nozzle-entries.3mf"
             project_settings = synthetic_project_settings()
@@ -473,15 +473,67 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             report = observe_3mf(source)
 
             self.assertEqual(
-                report["physical_tools"]["nozzle_diameters"], ["0.4", "0.6", "1"]
+                report["physical_tools"]["nozzle_diameters"],
+                ["0.4", "0.6", "1", None, None, None, None],
             )
             self.assertEqual(
                 report["warnings"],
                 [
-                    "project nozzle_diameter slot 4 must be a string or numeric scalar; got null",
-                    "project nozzle_diameter slot 5 must be a string or numeric scalar; got object",
-                    "project nozzle_diameter slot 6 must be a string or numeric scalar; got list",
-                    "project nozzle_diameter slot 7 must be a string or numeric scalar; got boolean",
+                    "project nozzle_diameter slot 4 must be a positive finite numeric diameter; got null",
+                    "project nozzle_diameter slot 5 must be a positive finite numeric diameter; got object",
+                    "project nozzle_diameter slot 6 must be a positive finite numeric diameter; got list",
+                    "project nozzle_diameter slot 7 must be a positive finite numeric diameter; got boolean",
+                ],
+            )
+
+    def test_preserves_valid_nozzle_after_invalid_middle_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "invalid-middle-nozzle.3mf"
+            project_settings = synthetic_project_settings()
+            project_settings["nozzle_diameter"] = ["0.4", None, "0.8"]
+            write_synthetic_3mf(source, project_settings=project_settings)
+
+            report = observe_3mf(source)
+
+            self.assertEqual(
+                report["physical_tools"]["nozzle_diameters"],
+                ["0.4", None, "0.8"],
+            )
+            self.assertEqual(
+                report["warnings"],
+                [
+                    "project nozzle_diameter slot 2 must be a positive finite numeric diameter; got null"
+                ],
+            )
+
+    def test_warns_and_preserves_invalid_nozzle_numeric_domains(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "invalid-nozzle-domains.3mf"
+            project_settings = synthetic_project_settings()
+            project_settings["nozzle_diameter"] = [
+                "not-a-number",
+                "0",
+                -0.2,
+                "NaN",
+                float("inf"),
+                0.6,
+            ]
+            write_synthetic_3mf(source, project_settings=project_settings)
+
+            report = observe_3mf(source)
+
+            self.assertEqual(
+                report["physical_tools"]["nozzle_diameters"],
+                [None, None, None, None, None, "0.6"],
+            )
+            self.assertEqual(
+                report["warnings"],
+                [
+                    "project nozzle_diameter slot 1 must be a positive finite numeric diameter; got nonnumeric string",
+                    "project nozzle_diameter slot 2 must be a positive finite numeric diameter; got nonpositive value",
+                    "project nozzle_diameter slot 3 must be a positive finite numeric diameter; got nonpositive value",
+                    "project nozzle_diameter slot 4 must be a positive finite numeric diameter; got non-finite value",
+                    "project nozzle_diameter slot 5 must be a positive finite numeric diameter; got non-finite value",
                 ],
             )
 
