@@ -8,6 +8,7 @@ connect to a printer, or bypass printer-side validation.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import tempfile
@@ -20,6 +21,19 @@ from typing import Any
 
 MODEL_SETTINGS = "Metadata/model_settings.config"
 PROJECT_SETTINGS = "Metadata/project_settings.config"
+AMP_METADATA_PREFIX = "Metadata/AMP/"
+PACKET_SIDECAR_FILES = (
+    "plan.json",
+    "regions.json",
+    "resolution_field.json",
+    "tool_assignments.json",
+    "process_queue.json",
+    "toolchange_schedule.json",
+    "per_region_gcode_status.json",
+    "debug_artifact.json",
+    "preflight_status.json",
+    "risk_report.md",
+)
 
 
 class HandoffError(ValueError):
@@ -30,6 +44,14 @@ class HandoffError(ValueError):
 class HandoffPlan:
     assignments: dict[str, int]
     nozzle_diameters: list[str]
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def normalize_region_name(value: str) -> str:
@@ -95,6 +117,57 @@ def patch_project_settings(data: bytes, nozzles: list[str]) -> bytes:
     return (json.dumps(payload, indent="\t") + "\n").encode("utf-8")
 
 
+def packet_members(packet_dir: Path) -> dict[str, bytes]:
+    members: dict[str, bytes] = {}
+    for name in PACKET_SIDECAR_FILES:
+        path = packet_dir / name
+        if path.is_file():
+            members[f"{AMP_METADATA_PREFIX}{name}"] = path.read_bytes()
+    return members
+
+
+def handoff_manifest(
+    template: Path, packet_dir: Path, plan: HandoffPlan
+) -> dict[str, Any]:
+    preflight_path = packet_dir / "preflight_status.json"
+    preflight_status = "not_ready"
+    if preflight_path.is_file():
+        preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+        preflight_status = str(preflight.get("status", "not_ready"))
+    nozzle_by_slot = {
+        index + 1: nozzle for index, nozzle in enumerate(plan.nozzle_diameters)
+    }
+    return {
+        "schema_version": "0.1",
+        "generator": "tools/amp_orca_3mf_handoff.py",
+        "source_template_sha256": sha256_file(template),
+        "nozzle_diameters": plan.nozzle_diameters,
+        "region_assignments": [
+            {
+                "region_name": region_name,
+                "orca_extruder": slot,
+                "expected_t_command": f"T{slot - 1}",
+                "nozzle_diameter": nozzle_by_slot[slot],
+            }
+            for region_name, slot in sorted(plan.assignments.items())
+        ],
+        "hardware_preflight_status": preflight_status,
+        "non_claims": [
+            "no physical mixed-nozzle validation",
+            "no touchscreen-compatible mixed-nozzle claim",
+            "no Snapmaker validation bypass",
+            "no printer execution",
+        ],
+    }
+
+
+def deterministic_zip_info(name: str) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o600 << 16
+    return info
+
+
 def generate_handoff(
     template: Path, packet_dir: Path, output: Path
 ) -> dict[str, Any]:
@@ -105,6 +178,13 @@ def generate_handoff(
         raise HandoffError("template and output paths must be different")
 
     plan = load_plan(packet_dir)
+    embedded_members = packet_members(packet_dir)
+    embedded_members[f"{AMP_METADATA_PREFIX}handoff_manifest.json"] = (
+        json.dumps(
+            handoff_manifest(template, packet_dir, plan), indent=2, sort_keys=True
+        )
+        + "\n"
+    ).encode("utf-8")
     output.parent.mkdir(parents=True, exist_ok=True)
     temp_path: Path | None = None
     try:
@@ -130,12 +210,16 @@ def generate_handoff(
 
             with zipfile.ZipFile(temp_path, "w") as destination:
                 for info in sorted(source.infolist(), key=lambda item: item.filename):
+                    if info.filename.startswith(AMP_METADATA_PREFIX):
+                        continue
                     data = source.read(info.filename)
                     if info.filename == MODEL_SETTINGS:
                         data = patched_model
                     elif info.filename == PROJECT_SETTINGS:
                         data = patched_project
                     destination.writestr(info, data)
+                for name, data in sorted(embedded_members.items()):
+                    destination.writestr(deterministic_zip_info(name), data)
 
         with zipfile.ZipFile(temp_path, "r") as generated:
             generated.testzip()

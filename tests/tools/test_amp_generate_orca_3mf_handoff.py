@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -32,6 +33,24 @@ def write_packet(path: Path) -> None:
     }
     (path / "process_queue.json").write_text(
         json.dumps(process_queue), encoding="utf-8"
+    )
+    (path / "plan.json").write_text(
+        json.dumps({"schema_version": "0.1", "status": "advisory"}),
+        encoding="utf-8",
+    )
+    (path / "tool_assignments.json").write_text(
+        json.dumps(
+            {
+                "assignments": [
+                    {"region_name": name, "tool_class": nozzle}
+                    for name, nozzle in REGIONS
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (path / "preflight_status.json").write_text(
+        json.dumps({"status": "not_ready", "ready": False}), encoding="utf-8"
     )
 
 
@@ -81,6 +100,10 @@ def read_project_nozzles(path: Path) -> list[str]:
     )["nozzle_diameter"]
 
 
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 class AmpOrca3mfHandoffTests(unittest.TestCase):
     def test_maps_regions_and_preserves_mesh(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -112,6 +135,57 @@ class AmpOrca3mfHandoffTests(unittest.TestCase):
             self.assertEqual(
                 read_member(output, "3D/Objects/body.model"), b"unchanged mesh"
             )
+
+    def test_embeds_packet_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            template = root / "template.3mf"
+            packet = root / "packet"
+            output = root / "handoff.3mf"
+            write_template(template)
+            write_packet(packet)
+
+            generate_handoff(template, packet, output)
+
+            with zipfile.ZipFile(output) as archive:
+                names = set(archive.namelist())
+                self.assertTrue(
+                    {
+                        "Metadata/AMP/plan.json",
+                        "Metadata/AMP/process_queue.json",
+                        "Metadata/AMP/tool_assignments.json",
+                        "Metadata/AMP/preflight_status.json",
+                        "Metadata/AMP/handoff_manifest.json",
+                    }.issubset(names)
+                )
+                manifest = json.loads(
+                    archive.read("Metadata/AMP/handoff_manifest.json")
+                )
+            self.assertEqual(manifest["schema_version"], "0.1")
+            self.assertEqual(manifest["source_template_sha256"], sha256(template))
+            self.assertEqual(
+                manifest["nozzle_diameters"], ["0.2", "0.4", "0.6", "0.8"]
+            )
+            self.assertEqual(manifest["hardware_preflight_status"], "not_ready")
+            self.assertEqual(
+                [item["region_name"] for item in manifest["region_assignments"]],
+                sorted(name for name, _ in REGIONS),
+            )
+
+    def test_output_is_deterministic(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            template = root / "template.3mf"
+            packet = root / "packet"
+            first = root / "first.3mf"
+            second = root / "second.3mf"
+            write_template(template)
+            write_packet(packet)
+
+            generate_handoff(template, packet, first)
+            generate_handoff(template, packet, second)
+
+            self.assertEqual(sha256(first), sha256(second))
 
 
 if __name__ == "__main__":
