@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import io
 import json
+import os
 import tempfile
 import unittest
 import warnings
@@ -17,6 +19,7 @@ from tools.amp_observe_3mf import (
     observe_3mf,
     serialize_json,
     serialize_markdown,
+    validate_report,
     write_reports,
 )
 
@@ -215,6 +218,186 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             with self.assertRaises(ObservationError):
                 serialize_json(report)
 
+    def test_validate_report_rejects_malformed_nested_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            valid = observe_3mf(source)
+            cases = [
+                (
+                    "source type",
+                    lambda report: report.__setitem__("source", []),
+                    "source",
+                ),
+                (
+                    "source field",
+                    lambda report: report["source"].pop("file_name"),
+                    "source",
+                ),
+                (
+                    "source field type",
+                    lambda report: report["source"].__setitem__(
+                        "member_count", "five"
+                    ),
+                    "source.member_count",
+                ),
+                (
+                    "project type",
+                    lambda report: report.__setitem__("project", []),
+                    "project",
+                ),
+                (
+                    "project field",
+                    lambda report: report["project"].pop("title"),
+                    "project",
+                ),
+                (
+                    "project field type",
+                    lambda report: report["project"].__setitem__("title", 7),
+                    "project.title",
+                ),
+                (
+                    "physical tools field",
+                    lambda report: report["physical_tools"].pop(
+                        "nozzle_diameters"
+                    ),
+                    "physical_tools",
+                ),
+                (
+                    "nozzle entry type",
+                    lambda report: report["physical_tools"].__setitem__(
+                        "nozzle_diameters", [0.4]
+                    ),
+                    "physical_tools.nozzle_diameters[0]",
+                ),
+                (
+                    "materials type",
+                    lambda report: report.__setitem__("materials", {}),
+                    "materials",
+                ),
+                (
+                    "material field",
+                    lambda report: report["materials"][0].pop("slot"),
+                    "materials[0]",
+                ),
+                (
+                    "material field type",
+                    lambda report: report["materials"][0].__setitem__(
+                        "profile", []
+                    ),
+                    "materials[0].profile",
+                ),
+                (
+                    "plate field",
+                    lambda report: report["plates"][0].pop("object_ids"),
+                    "plates[0]",
+                ),
+                (
+                    "plate field type",
+                    lambda report: report["plates"][0].__setitem__(
+                        "object_ids", "2"
+                    ),
+                    "plates[0].object_ids",
+                ),
+                (
+                    "object field",
+                    lambda report: report["objects"][0].pop("name"),
+                    "objects[0]",
+                ),
+                (
+                    "object field type",
+                    lambda report: report["objects"][0].__setitem__(
+                        "semantic_name_tokens", "glass"
+                    ),
+                    "objects[0].semantic_name_tokens",
+                ),
+                (
+                    "geometry field",
+                    lambda report: report["objects"][0]["geometry"].pop(
+                        "bounds"
+                    ),
+                    "objects[0].geometry",
+                ),
+                (
+                    "geometry field type",
+                    lambda report: report["objects"][0]["geometry"].__setitem__(
+                        "dimensions", [1.0, 2.0]
+                    ),
+                    "objects[0].geometry.dimensions",
+                ),
+                (
+                    "geometry enormous integer",
+                    lambda report: report["objects"][0]["geometry"].__setitem__(
+                        "dimensions", [10**1000, 2, 3]
+                    ),
+                    "objects[0].geometry.dimensions[0]",
+                ),
+                (
+                    "report warning type",
+                    lambda report: report.__setitem__("warnings", [7]),
+                    "warnings[0]",
+                ),
+                (
+                    "object warning type",
+                    lambda report: report["objects"][0].__setitem__(
+                        "warnings", "warning"
+                    ),
+                    "objects[0].warnings",
+                ),
+            ]
+
+            for label, mutate, context in cases:
+                report = copy.deepcopy(valid)
+                mutate(report)
+                with self.subTest(label=label), self.assertRaisesRegex(
+                    ObservationError, context.replace("[", r"\[")
+                ):
+                    validate_report(report)
+
+    def test_validate_report_rejects_lone_surrogates_recursively(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            valid = observe_3mf(source)
+            cases = [
+                (
+                    "source.file_name",
+                    lambda report: report["source"].__setitem__(
+                        "file_name", "bad\ud800name"
+                    ),
+                ),
+                (
+                    "project.title",
+                    lambda report: report["project"].__setitem__(
+                        "title", "bad\udfffproject"
+                    ),
+                ),
+                (
+                    "objects[0].name",
+                    lambda report: report["objects"][0].__setitem__(
+                        "name", "bad\ud800object"
+                    ),
+                ),
+                (
+                    "warnings[0]",
+                    lambda report: report.__setitem__(
+                        "warnings", ["bad\udfffwarning"]
+                    ),
+                ),
+            ]
+
+            for context, mutate in cases:
+                report = copy.deepcopy(valid)
+                mutate(report)
+                with self.subTest(context=context):
+                    with self.assertRaisesRegex(
+                        ObservationError, "lone surrogate"
+                    ) as raised:
+                        serialize_json(report)
+                    self.assertIn(context, str(raised.exception))
+
+            serialize_json(valid).encode("utf-8")
+
     def test_markdown_escapes_table_text_and_preserves_nozzle_slots(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "synthetic.3mf"
@@ -228,9 +411,32 @@ class AmpObserve3mfContractTests(unittest.TestCase):
 
             self.assertIn("Source: `source<br>name.3mf`", markdown)
             self.assertIn("Configured nozzle vector: `0.4,,0.8`", markdown)
-            self.assertIn("Glass\\|Detail<br>Second line.stl", markdown)
+            self.assertIn("Glass&#124;Detail<br>Second line.stl", markdown)
             self.assertEqual(markdown, serialize_markdown(report))
             self.assertTrue(markdown.endswith("\n"))
+
+    def test_markdown_html_escapes_all_untrusted_text(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+            report["source"]["file_name"] = "<source&name>\rfile.3mf"
+            report["objects"][0]["name"] = (
+                "<b>A&B</b>\\|tick`\rline\nnext\r\nlast"
+            )
+
+            markdown = serialize_markdown(report)
+
+            self.assertIn(
+                "Source: `&lt;source&amp;name&gt;<br>file.3mf`", markdown
+            )
+            self.assertIn(
+                "&lt;b&gt;A&amp;B&lt;/b&gt;\\&#124;tick&#96;"
+                "<br>line<br>next<br>last",
+                markdown,
+            )
+            self.assertNotIn("<source", markdown)
+            self.assertNotIn("<b>", markdown)
 
     def test_writes_json_and_markdown_atomically(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -242,7 +448,10 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             report = observe_3mf(source)
 
             write_reports(
-                report, json_path=json_path, markdown_path=markdown_path
+                report,
+                source_path=source,
+                json_path=json_path,
+                markdown_path=markdown_path,
             )
 
             self.assertEqual(
@@ -253,16 +462,19 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                 serialize_markdown(report),
             )
             self.assertFalse(list(root.glob(".*.tmp")))
+            self.assertFalse(list(root.glob(".*.bak")))
 
     def test_failure_does_not_replace_existing_report(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            source = root / "synthetic.3mf"
             json_path = root / "report.json"
             json_path.write_text("existing\n", encoding="utf-8")
 
             with self.assertRaises(ObservationError):
                 write_reports(
                     {"not": "a report"},
+                    source_path=source,
                     json_path=json_path,
                     markdown_path=None,
                 )
@@ -284,15 +496,273 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                 "tools.amp_observe_3mf.os.replace",
                 side_effect=OSError("replace failed"),
             ):
-                with self.assertRaises(OSError):
+                with self.assertRaisesRegex(
+                    ObservationError, "report.json.*replace failed"
+                ):
                     write_reports(
-                        report, json_path=json_path, markdown_path=None
+                        report,
+                        source_path=source,
+                        json_path=json_path,
+                        markdown_path=None,
                     )
 
             self.assertEqual(
                 json_path.read_text(encoding="utf-8"), "existing\n"
             )
             self.assertFalse(list(root.glob(".*.tmp")))
+            self.assertFalse(list(root.glob(".*.bak")))
+
+    def test_second_replace_failure_restores_both_existing_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            markdown_path = root / "report.md"
+            write_synthetic_3mf(source)
+            json_path.write_text("old json\n", encoding="utf-8")
+            markdown_path.write_text("old markdown\n", encoding="utf-8")
+            report = observe_3mf(source)
+            real_replace = os.replace
+            replace_count = 0
+
+            def fail_second_replace(src: Path, destination: Path) -> None:
+                nonlocal replace_count
+                replace_count += 1
+                if replace_count == 2:
+                    raise OSError("second replace failed")
+                real_replace(src, destination)
+
+            with mock.patch(
+                "tools.amp_observe_3mf.os.replace",
+                side_effect=fail_second_replace,
+            ):
+                with self.assertRaisesRegex(
+                    ObservationError, "report.md.*second replace failed"
+                ):
+                    write_reports(
+                        report,
+                        source_path=source,
+                        json_path=json_path,
+                        markdown_path=markdown_path,
+                    )
+
+            self.assertEqual(
+                json_path.read_text(encoding="utf-8"), "old json\n"
+            )
+            self.assertEqual(
+                markdown_path.read_text(encoding="utf-8"), "old markdown\n"
+            )
+            self.assertFalse(list(root.glob(".*.tmp")))
+            self.assertFalse(list(root.glob(".*.bak")))
+
+    def test_second_replace_failure_removes_new_first_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            markdown_path = root / "report.md"
+            write_synthetic_3mf(source)
+            markdown_path.write_text("old markdown\n", encoding="utf-8")
+            report = observe_3mf(source)
+            real_replace = os.replace
+            replace_count = 0
+
+            def fail_second_replace(src: Path, destination: Path) -> None:
+                nonlocal replace_count
+                replace_count += 1
+                if replace_count == 2:
+                    raise OSError("second replace failed")
+                real_replace(src, destination)
+
+            with mock.patch(
+                "tools.amp_observe_3mf.os.replace",
+                side_effect=fail_second_replace,
+            ):
+                with self.assertRaises(ObservationError):
+                    write_reports(
+                        report,
+                        source_path=source,
+                        json_path=json_path,
+                        markdown_path=markdown_path,
+                    )
+
+            self.assertFalse(json_path.exists())
+            self.assertEqual(
+                markdown_path.read_text(encoding="utf-8"), "old markdown\n"
+            )
+            self.assertFalse(list(root.glob(".*.tmp")))
+            self.assertFalse(list(root.glob(".*.bak")))
+
+    def test_write_reports_rejects_normalized_source_aliases_before_staging(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+            aliases = [source, root / "unused" / ".." / source.name]
+            case_alias = source.with_name(source.name.upper())
+            if os.path.normcase(str(case_alias)) == os.path.normcase(str(source)):
+                aliases.append(case_alias)
+
+            for alias in aliases:
+                with self.subTest(alias=alias), mock.patch(
+                    "tools.amp_observe_3mf.tempfile.NamedTemporaryFile"
+                ) as named_temp:
+                    with self.assertRaisesRegex(
+                        ObservationError, "JSON destination aliases source"
+                    ):
+                        write_reports(
+                            report,
+                            source_path=source,
+                            json_path=alias,
+                            markdown_path=None,
+                        )
+                    named_temp.assert_not_called()
+
+            self.assertTrue(zipfile.is_zipfile(source))
+
+    def test_write_reports_rejects_source_symlink_and_hardlink_aliases(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            hardlink = root / "hardlink.json"
+            symlink = root / "symlink.json"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+            os.link(source, hardlink)
+            aliases = [hardlink]
+            try:
+                os.symlink(source, symlink)
+            except OSError:
+                pass
+            else:
+                aliases.append(symlink)
+
+            for alias in aliases:
+                with self.subTest(alias=alias), self.assertRaisesRegex(
+                    ObservationError, "JSON destination aliases source"
+                ):
+                    write_reports(
+                        report,
+                        source_path=source,
+                        json_path=alias,
+                        markdown_path=None,
+                    )
+
+            self.assertTrue(zipfile.is_zipfile(source))
+
+    def test_write_reports_rejects_aliasing_output_destinations(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            markdown_alias = root / "unused" / ".." / json_path.name
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+
+            with self.assertRaisesRegex(
+                ObservationError, "JSON and Markdown destinations alias"
+            ):
+                write_reports(
+                    report,
+                    source_path=source,
+                    json_path=json_path,
+                    markdown_path=markdown_alias,
+                )
+
+            self.assertFalse(json_path.exists())
+
+    def test_write_reports_rejects_hardlinked_output_destinations(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            markdown_path = root / "report.md"
+            write_synthetic_3mf(source)
+            json_path.write_text("existing\n", encoding="utf-8")
+            os.link(json_path, markdown_path)
+            report = observe_3mf(source)
+
+            with self.assertRaisesRegex(
+                ObservationError, "JSON and Markdown destinations alias"
+            ):
+                write_reports(
+                    report,
+                    source_path=source,
+                    json_path=json_path,
+                    markdown_path=markdown_path,
+                )
+
+            self.assertEqual(json_path.read_text(encoding="utf-8"), "existing\n")
+            self.assertEqual(
+                markdown_path.read_text(encoding="utf-8"), "existing\n"
+            )
+
+    def test_write_reports_rejects_case_aliases_on_case_insensitive_filesystem(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            markdown_path = root / "REPORT.JSON"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+
+            with mock.patch(
+                "tools.amp_observe_3mf.os.path.normcase",
+                side_effect=lambda value: value,
+            ), mock.patch(
+                "tools.amp_observe_3mf.filesystem_is_case_insensitive",
+                return_value=True,
+                create=True,
+            ):
+                with self.assertRaisesRegex(
+                    ObservationError, "JSON and Markdown destinations alias"
+                ):
+                    write_reports(
+                        report,
+                        source_path=source,
+                        json_path=json_path,
+                        markdown_path=markdown_path,
+                    )
+
+            self.assertFalse(json_path.exists())
+
+    def test_cli_rejects_collisions_before_observation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            cases = [
+                ["--3mf", str(source), "--out-json", str(source)],
+                [
+                    "--3mf",
+                    str(source),
+                    "--out-json",
+                    str(root / "report.json"),
+                    "--out-md",
+                    str(root / "report.json"),
+                ],
+            ]
+
+            for argv in cases:
+                stderr = io.StringIO()
+                with self.subTest(argv=argv), mock.patch(
+                    "tools.amp_observe_3mf.observe_3mf"
+                ) as observe, mock.patch("sys.stderr", stderr):
+                    exit_code = main(argv)
+
+                    self.assertEqual(exit_code, 2)
+                    observe.assert_not_called()
+                    self.assertIn("alias", stderr.getvalue())
+                    self.assertNotIn("Traceback", stderr.getvalue())
+
+            self.assertTrue(zipfile.is_zipfile(source))
 
     def test_cli_defaults_to_json_stdout_without_writing_a_report(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -320,6 +790,144 @@ class AmpObserve3mfContractTests(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertIn("AMP 3MF observation failed:", stderr.getvalue())
         self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_cli_wraps_output_oserror_with_destination_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            write_synthetic_3mf(source)
+            stderr = io.StringIO()
+
+            with mock.patch(
+                "tools.amp_observe_3mf.tempfile.NamedTemporaryFile",
+                side_effect=OSError("disk full"),
+            ), mock.patch("sys.stderr", stderr):
+                exit_code = main(
+                    [
+                        "--3mf",
+                        str(source),
+                        "--out-json",
+                        str(json_path),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 2)
+            self.assertIn(str(json_path), stderr.getvalue())
+            self.assertIn("disk full", stderr.getvalue())
+            self.assertNotIn("Traceback", stderr.getvalue())
+            self.assertFalse(json_path.exists())
+
+    def test_write_reports_wraps_unicode_output_error_with_destination(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+
+            with mock.patch(
+                "tools.amp_observe_3mf.tempfile.NamedTemporaryFile",
+                side_effect=UnicodeError("encoding failed"),
+            ):
+                with self.assertRaisesRegex(
+                    ObservationError, "report.json.*encoding failed"
+                ):
+                    write_reports(
+                        report,
+                        source_path=source,
+                        json_path=json_path,
+                        markdown_path=None,
+                    )
+
+            self.assertFalse(json_path.exists())
+
+    def test_cli_treats_broken_stdout_pipe_without_an_error_report(self) -> None:
+        class BrokenPipeStdout(io.StringIO):
+            def write(self, value: str) -> int:
+                raise BrokenPipeError("closed pipe")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            stderr = io.StringIO()
+
+            with mock.patch("sys.stdout", BrokenPipeStdout()), mock.patch(
+                "sys.stderr", stderr
+            ):
+                exit_code = main(["--3mf", str(source)])
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(stderr.getvalue(), "")
+
+    def test_write_reports_wraps_unicode_cleanup_error_with_destination(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            write_synthetic_3mf(source)
+            json_path.write_text("existing\n", encoding="utf-8")
+            report = observe_3mf(source)
+            real_unlink = Path.unlink
+
+            def fail_backup_cleanup(
+                path: Path, *, missing_ok: bool = False
+            ) -> None:
+                if path.suffix == ".bak":
+                    raise UnicodeError("cleanup encoding failed")
+                real_unlink(path, missing_ok=missing_ok)
+
+            with mock.patch.object(Path, "unlink", fail_backup_cleanup):
+                with self.assertRaisesRegex(
+                    ObservationError, "report.json.*cleanup encoding failed"
+                ):
+                    write_reports(
+                        report,
+                        source_path=source,
+                        json_path=json_path,
+                        markdown_path=None,
+                    )
+
+    def test_write_reports_wraps_path_preflight_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+            cases = [
+                (
+                    "realpath",
+                    mock.patch(
+                        "tools.amp_observe_3mf.os.path.realpath",
+                        side_effect=OSError("normalization failed"),
+                    ),
+                ),
+                (
+                    "samefile",
+                    mock.patch(
+                        "tools.amp_observe_3mf.os.path.samefile",
+                        side_effect=UnicodeError("comparison failed"),
+                    ),
+                ),
+            ]
+
+            for label, patched_operation in cases:
+                with self.subTest(label=label), patched_operation:
+                    with self.assertRaisesRegex(
+                        ObservationError,
+                        "report path.*(normalization|comparison) failed",
+                    ):
+                        write_reports(
+                            report,
+                            source_path=source,
+                            json_path=json_path,
+                            markdown_path=None,
+                        )
 
     def test_observes_source_contract_without_modifying_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

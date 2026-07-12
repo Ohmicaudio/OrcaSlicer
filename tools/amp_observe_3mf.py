@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import math
 import os
 import re
+import shutil
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -56,6 +58,16 @@ class ObjectModelReference:
     canonical_key: str
     object_id: int
     transform: tuple[float, ...] | None
+
+
+@dataclass
+class StagedReportOutput:
+    destination: Path
+    content: str
+    temp_path: Path | None = None
+    backup_path: Path | None = None
+    existed: bool = False
+    replaced: bool = False
 
 
 def sha256_file(path: Path) -> str:
@@ -782,22 +794,260 @@ def observe_3mf(source: Path) -> dict[str, Any]:
         raise ObservationError(f"unreadable 3MF archive: {exc}") from exc
 
 
+def invalid_report(context: str, message: str) -> None:
+    raise ObservationError(f"invalid observation report; {context} {message}")
+
+
+def require_mapping(
+    value: Any, context: str, required: set[str]
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        invalid_report(context, "must be an object")
+    missing = sorted(required - set(value))
+    if missing:
+        invalid_report(context, "missing: " + ", ".join(missing))
+    return value
+
+
+def require_list(value: Any, context: str) -> list[Any]:
+    if not isinstance(value, list):
+        invalid_report(context, "must be a list")
+    return value
+
+
+def require_string(value: Any, context: str, *, nullable: bool = False) -> None:
+    if nullable and value is None:
+        return
+    if not isinstance(value, str):
+        expected = "a string or null" if nullable else "a string"
+        invalid_report(context, f"must be {expected}")
+
+
+def require_integer(value: Any, context: str, *, minimum: int = 0) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        invalid_report(context, "must be an integer")
+    if value < minimum:
+        invalid_report(context, f"must be at least {minimum}")
+
+
+def require_string_list(value: Any, context: str) -> list[Any]:
+    items = require_list(value, context)
+    for index, item in enumerate(items):
+        require_string(item, f"{context}[{index}]")
+    return items
+
+
+def validate_utf8_strings(value: Any, context: str) -> None:
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            invalid_report(context, "contains a lone surrogate")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                invalid_report(context, "contains a non-string key")
+            validate_utf8_strings(key, f"{context} key")
+            validate_utf8_strings(item, f"{context}.{key}")
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            validate_utf8_strings(item, f"{context}[{index}]")
+
+
+def validate_material(value: Any, context: str) -> None:
+    material = require_mapping(value, context, {"slot", "profile", "color"})
+    require_integer(material["slot"], f"{context}.slot", minimum=1)
+    require_string(material["profile"], f"{context}.profile", nullable=True)
+    require_string(material["color"], f"{context}.color", nullable=True)
+
+
+def validate_number_vector(value: Any, context: str) -> None:
+    items = require_list(value, context)
+    if len(items) != 3:
+        invalid_report(context, "must contain three numbers")
+    for index, item in enumerate(items):
+        try:
+            finite = math.isfinite(item)
+        except (OverflowError, TypeError):
+            finite = False
+        if (
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not finite
+        ):
+            invalid_report(f"{context}[{index}]", "must be a finite number")
+
+
+def validate_geometry(value: Any, context: str) -> None:
+    geometry = require_mapping(
+        value,
+        context,
+        {"vertex_count", "triangle_count", "bounds", "dimensions", "streamed"},
+    )
+    require_integer(geometry["vertex_count"], f"{context}.vertex_count")
+    require_integer(geometry["triangle_count"], f"{context}.triangle_count")
+    bounds = geometry["bounds"]
+    if bounds is not None:
+        bounds = require_mapping(bounds, f"{context}.bounds", {"min", "max"})
+        validate_number_vector(bounds["min"], f"{context}.bounds.min")
+        validate_number_vector(bounds["max"], f"{context}.bounds.max")
+    dimensions = geometry["dimensions"]
+    if dimensions is not None:
+        validate_number_vector(dimensions, f"{context}.dimensions")
+    if not isinstance(geometry["streamed"], bool):
+        invalid_report(f"{context}.streamed", "must be a boolean")
+
+
+def validate_warning_list(value: Any, context: str) -> None:
+    require_string_list(value, context)
+
+
 def validate_report(report: dict[str, Any]) -> None:
-    required = {
-        "schema_version",
+    validate_utf8_strings(report, "report")
+    report = require_mapping(
+        report,
+        "report",
+        {
+            "schema_version",
+            "source",
+            "project",
+            "physical_tools",
+            "materials",
+            "plates",
+            "objects",
+            "warnings",
+        },
+    )
+    require_string(report["schema_version"], "schema_version")
+
+    source = require_mapping(
+        report["source"],
         "source",
+        {
+            "file_name",
+            "sha256",
+            "compressed_size",
+            "member_count",
+            "uncompressed_member_bytes",
+            "required_members",
+        },
+    )
+    require_string(source["file_name"], "source.file_name")
+    require_string(source["sha256"], "source.sha256")
+    for field in ("compressed_size", "member_count", "uncompressed_member_bytes"):
+        require_integer(source[field], f"source.{field}")
+    require_string_list(source["required_members"], "source.required_members")
+
+    project = require_mapping(
+        report["project"],
         "project",
+        {
+            "title",
+            "designer",
+            "license",
+            "source_application",
+            "printer_preset",
+            "process_preset",
+            "layer_height",
+            "wall_generator",
+        },
+    )
+    for key, value in project.items():
+        require_string(value, f"project.{key}", nullable=True)
+
+    physical_tools = require_mapping(
+        report["physical_tools"],
         "physical_tools",
-        "materials",
-        "plates",
-        "objects",
+        {"nozzle_diameters", "source_member"},
+    )
+    nozzles = require_list(
+        physical_tools["nozzle_diameters"], "physical_tools.nozzle_diameters"
+    )
+    for index, nozzle in enumerate(nozzles):
+        require_string(
+            nozzle,
+            f"physical_tools.nozzle_diameters[{index}]",
+            nullable=True,
+        )
+    require_string(physical_tools["source_member"], "physical_tools.source_member")
+
+    materials = require_list(report["materials"], "materials")
+    for index, material in enumerate(materials):
+        validate_material(material, f"materials[{index}]")
+
+    plates = require_list(report["plates"], "plates")
+    for index, value in enumerate(plates):
+        context = f"plates[{index}]"
+        plate = require_mapping(value, context, {"plate_id", "name", "object_ids"})
+        require_integer(plate["plate_id"], f"{context}.plate_id", minimum=1)
+        require_string(plate["name"], f"{context}.name", nullable=True)
+        object_ids = require_list(plate["object_ids"], f"{context}.object_ids")
+        for object_index, object_id in enumerate(object_ids):
+            require_integer(
+                object_id,
+                f"{context}.object_ids[{object_index}]",
+                minimum=1,
+            )
+
+    objects = require_list(report["objects"], "objects")
+    object_fields = {
+        "object_id",
+        "name",
+        "plate_id",
+        "plate_name",
+        "source_model_member",
+        "part_count",
+        "material_assignment",
+        "resolved_material",
+        "physical_nozzle_assignment",
+        "recommended_tool_class",
+        "semantic_name_tokens",
+        "geometry",
         "warnings",
     }
-    missing = sorted(required - set(report))
-    if missing:
-        raise ObservationError(
-            "invalid observation report; missing: " + ", ".join(missing)
+    for index, value in enumerate(objects):
+        context = f"objects[{index}]"
+        item = require_mapping(value, context, object_fields)
+        require_integer(item["object_id"], f"{context}.object_id", minimum=1)
+        require_string(item["name"], f"{context}.name")
+        if item["plate_id"] is not None:
+            require_integer(item["plate_id"], f"{context}.plate_id", minimum=1)
+        require_string(item["plate_name"], f"{context}.plate_name", nullable=True)
+        require_string(
+            item["source_model_member"],
+            f"{context}.source_model_member",
+            nullable=True,
         )
+        require_integer(item["part_count"], f"{context}.part_count")
+        if item["material_assignment"] is not None:
+            require_integer(
+                item["material_assignment"],
+                f"{context}.material_assignment",
+                minimum=1,
+            )
+        if item["resolved_material"] is not None:
+            validate_material(item["resolved_material"], f"{context}.resolved_material")
+        if item["physical_nozzle_assignment"] is not None:
+            require_integer(
+                item["physical_nozzle_assignment"],
+                f"{context}.physical_nozzle_assignment",
+                minimum=1,
+            )
+        require_string(
+            item["recommended_tool_class"],
+            f"{context}.recommended_tool_class",
+            nullable=True,
+        )
+        require_string_list(
+            item["semantic_name_tokens"], f"{context}.semantic_name_tokens"
+        )
+        if item["geometry"] is not None:
+            validate_geometry(item["geometry"], f"{context}.geometry")
+        validate_warning_list(item["warnings"], f"{context}.warnings")
+
+    validate_warning_list(report["warnings"], "warnings")
 
 
 def serialize_json(report: dict[str, Any]) -> str:
@@ -818,12 +1068,13 @@ def serialize_json(report: dict[str, Any]) -> str:
 
 
 def markdown_text(value: Any) -> str:
+    escaped = html.escape(str(value), quote=True)
     return (
-        str(value)
+        escaped
         .replace("\r\n", "\n")
         .replace("\r", "\n")
         .replace("\n", "<br>")
-        .replace("|", "\\|")
+        .replace("|", "&#124;")
         .replace("`", "&#96;")
     )
 
@@ -870,44 +1121,235 @@ def serialize_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def atomic_write(path: Path, content: str) -> Path:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path: Path | None = None
+def cleanup_report_artifacts(outputs: list[StagedReportOutput]) -> list[str]:
+    errors = []
+    for output in outputs:
+        for kind, artifact in (
+            ("temporary file", output.temp_path),
+            ("backup", output.backup_path),
+        ):
+            if artifact is None:
+                continue
+            try:
+                artifact.unlink(missing_ok=True)
+            except (OSError, UnicodeError) as exc:
+                errors.append(
+                    f"{output.destination} {kind} cleanup failed: {exc}"
+                )
+    return errors
+
+
+def stage_report_output(output: StagedReportOutput) -> None:
+    destination = output.destination
     try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",
             newline="\n",
-            dir=path.parent,
-            prefix=f".{path.name}.",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
             suffix=".tmp",
             delete=False,
         ) as handle:
-            temp_path = Path(handle.name)
-            handle.write(content)
-        os.replace(temp_path, path)
-        temp_path = None
-    finally:
-        if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
+            output.temp_path = Path(handle.name)
+            handle.write(output.content)
+    except (OSError, UnicodeError) as exc:
+        cleanup_report_artifacts([output])
+        raise ObservationError(
+            f"failed to stage report destination {destination}: {exc}"
+        ) from exc
+
+
+def backup_report_output(output: StagedReportOutput) -> None:
+    destination = output.destination
+    output.existed = os.path.lexists(destination)
+    if not output.existed:
+        return
+    try:
+        with tempfile.NamedTemporaryFile(
+            "wb",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            suffix=".bak",
+            delete=False,
+        ) as handle:
+            output.backup_path = Path(handle.name)
+        shutil.copy2(destination, output.backup_path)
+    except (OSError, UnicodeError) as exc:
+        raise ObservationError(
+            f"failed to back up report destination {destination}: {exc}"
+        ) from exc
+
+
+def commit_report_outputs(outputs: list[StagedReportOutput]) -> None:
+    try:
+        for output in outputs:
+            stage_report_output(output)
+        for output in outputs:
+            backup_report_output(output)
+    except ObservationError:
+        cleanup_report_artifacts(outputs)
+        raise
+
+    current: StagedReportOutput | None = None
+    try:
+        for current in outputs:
+            if current.temp_path is None:
+                raise ObservationError(
+                    f"missing staged report for {current.destination}"
+                )
+            os.replace(current.temp_path, current.destination)
+            current.temp_path = None
+            current.replaced = True
+    except (OSError, UnicodeError, ObservationError) as exc:
+        rollback_errors = []
+        for output in reversed(outputs):
+            if not output.replaced:
+                continue
+            try:
+                if output.existed:
+                    if output.backup_path is None:
+                        raise OSError("missing rollback backup")
+                    os.replace(output.backup_path, output.destination)
+                    output.backup_path = None
+                else:
+                    output.destination.unlink(missing_ok=True)
+            except (OSError, UnicodeError) as rollback_exc:
+                rollback_errors.append(
+                    f"{output.destination}: {rollback_exc}"
+                )
+        cleanup_errors = cleanup_report_artifacts(outputs)
+        details = rollback_errors + cleanup_errors
+        suffix = f"; rollback cleanup errors: {'; '.join(details)}" if details else ""
+        destination = current.destination if current is not None else "unknown"
+        raise ObservationError(
+            f"failed to replace report destination {destination}: {exc}{suffix}"
+        ) from exc
+
+    cleanup_errors = cleanup_report_artifacts(outputs)
+    if cleanup_errors:
+        raise ObservationError(
+            "failed to clean report output artifacts: "
+            + "; ".join(cleanup_errors)
+        )
+
+
+def atomic_write(path: Path, content: str) -> Path:
+    path = Path(path)
+    commit_report_outputs([StagedReportOutput(path, content)])
     return path
+
+
+def normalized_output_path(path: Path) -> str:
+    try:
+        absolute = os.path.abspath(os.path.normpath(os.fspath(path)))
+        return os.path.normcase(os.path.realpath(absolute))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ObservationError(
+            f"cannot normalize report path {path}: {exc}"
+        ) from exc
+
+
+def filesystem_is_case_insensitive(path: Path) -> bool:
+    if os.path.normcase("A") == os.path.normcase("a"):
+        return True
+    current = Path(os.path.abspath(os.path.normpath(os.fspath(path))))
+    while not os.path.lexists(current) and current.parent != current:
+        current = current.parent
+    for existing in (current, *current.parents):
+        name = existing.name
+        for index, character in enumerate(name):
+            if not character.isalpha():
+                continue
+            swapped = character.swapcase()
+            if swapped == character:
+                continue
+            alternate = existing.with_name(
+                name[:index] + swapped + name[index + 1 :]
+            )
+            try:
+                if os.path.samefile(existing, alternate):
+                    return True
+            except FileNotFoundError:
+                pass
+            except (OSError, UnicodeError, ValueError) as exc:
+                raise ObservationError(
+                    f"cannot determine report path case sensitivity for "
+                    f"{path}: {exc}"
+                ) from exc
+            break
+    return False
+
+
+def paths_alias(first: Path, second: Path) -> bool:
+    first_normalized = normalized_output_path(first)
+    second_normalized = normalized_output_path(second)
+    if first_normalized == second_normalized:
+        return True
+    if (
+        first_normalized.casefold() == second_normalized.casefold()
+        and (
+            filesystem_is_case_insensitive(first)
+            or filesystem_is_case_insensitive(second)
+        )
+    ):
+        return True
+    try:
+        return os.path.samefile(first, second)
+    except FileNotFoundError:
+        return False
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ObservationError(
+            f"cannot compare report paths {first} and {second}: {exc}"
+        ) from exc
+
+
+def validate_report_paths(
+    source_path: Path,
+    json_path: Path | None,
+    markdown_path: Path | None,
+) -> None:
+    source_path = Path(source_path)
+    if json_path is not None and paths_alias(source_path, Path(json_path)):
+        raise ObservationError(
+            f"JSON destination aliases source: {json_path}"
+        )
+    if markdown_path is not None and paths_alias(
+        source_path, Path(markdown_path)
+    ):
+        raise ObservationError(
+            f"Markdown destination aliases source: {markdown_path}"
+        )
+    if (
+        json_path is not None
+        and markdown_path is not None
+        and paths_alias(Path(json_path), Path(markdown_path))
+    ):
+        raise ObservationError(
+            "JSON and Markdown destinations alias: "
+            f"{json_path} and {markdown_path}"
+        )
 
 
 def write_reports(
     report: dict[str, Any],
     *,
+    source_path: Path,
     json_path: Path | None,
     markdown_path: Path | None,
 ) -> None:
+    validate_report_paths(source_path, json_path, markdown_path)
     json_content = serialize_json(report) if json_path is not None else None
     markdown_content = (
         serialize_markdown(report) if markdown_path is not None else None
     )
+    outputs = []
     if json_path is not None and json_content is not None:
-        atomic_write(json_path, json_content)
+        outputs.append(StagedReportOutput(Path(json_path), json_content))
     if markdown_path is not None and markdown_content is not None:
-        atomic_write(markdown_path, markdown_content)
+        outputs.append(StagedReportOutput(Path(markdown_path), markdown_content))
+    commit_report_outputs(outputs)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -917,15 +1359,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-md", type=Path)
     args = parser.parse_args(argv)
     try:
+        validate_report_paths(args.source, args.out_json, args.out_md)
         report = observe_3mf(args.source)
         if args.out_json is None and args.out_md is None:
             sys.stdout.write(serialize_json(report))
         else:
             write_reports(
                 report,
+                source_path=args.source,
                 json_path=args.out_json,
                 markdown_path=args.out_md,
             )
+    except BrokenPipeError:
+        try:
+            stdout_fd = sys.stdout.fileno()
+            devnull_fd = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(devnull_fd, stdout_fd)
+            finally:
+                os.close(devnull_fd)
+        except (AttributeError, OSError, ValueError):
+            pass
+        return 1
     except ObservationError as exc:
         print(f"AMP 3MF observation failed: {exc}", file=sys.stderr)
         return 2
