@@ -145,9 +145,74 @@ Both reached project configuration validation and exited `-18` with the same pre
 bridge_line_width: Bridge line width must not exceed nozzle diameter: 0.800000
 ```
 
-This error is not introduced by the AMP handoff because the untouched original produces the identical result. The original project remains the previously confirmed official Orca GUI mixed-nozzle baseline.
+This error is not introduced by the AMP handoff because the untouched original produces the identical result. It is limited to this CLI inspection path; the fresh GUI acceptance run below succeeded.
 
-A fresh GUI open/export of the generated project remains a separate validation step. It is not claimed by this milestone.
+## Fresh Official Orca GUI Acceptance
+
+Official Orca v2.4.1 was launched in a separate process with the generated project path.
+
+Observed window title:
+
+```text
+amp_generated_orca_handoff - OrcaSlicer
+```
+
+Orca's debug log confirms:
+
+- the generated project loaded with four objects;
+- slicing started for all four objects;
+- G-code generation completed;
+- the plate slice-valid state changed to valid;
+- the preview loaded the generated G-code;
+- the sliced-plate package embedded `Metadata/plate_1.gcode`.
+
+Sliced-plate package:
+
+```text
+outputs/amp_orca_3mf_handoff/amp_generated_orca_handoff.gcode.3mf
+```
+
+Package size and SHA-256:
+
+```text
+238,169 bytes
+3ED69EC76C2CE15FC738170AEAAAF9D867FC8682D63893826E40B7BCF90F7ED3
+```
+
+Extracted G-code:
+
+```text
+outputs/amp_orca_3mf_handoff/amp_generated_orca_handoff.gcode
+```
+
+G-code size and SHA-256:
+
+```text
+1,206,918 bytes
+730BE59D77C0A6D089A46829235E0A5BFB74C8F6793C700C1302BF6D99D65D9A
+```
+
+AMP G-code conformance validator result:
+
+```text
+PASS
+errors=0
+warnings=3
+```
+
+Observed G-code evidence:
+
+| Field | Result |
+| --- | --- |
+| Nozzle header | `0.2,0.4,0.6,0.8,0.8` |
+| Unique planned nozzle classes | `0.2,0.4,0.6,0.8` |
+| Active tools | `T0,T1,T2,T3` |
+| Tool command count | 80 |
+| Region identities | all four present |
+| Print settings ID | `0.12mm Mixed Probe @AMP Mixed ToolChanger` |
+| Forbidden claim text | none |
+
+The three warnings are the existing extra unused fifth tool slot, shared/global layer-height limitations in the official Orca baseline, and the shared mixed-probe process ID. They do not invalidate the region/tool/nozzle mapping result.
 
 ## Fail-Closed Behavior
 
@@ -171,8 +236,9 @@ AMP offline plan packet
 -> automatic object/tool/nozzle metadata handoff
 -> embedded AMP sidecar authority
 -> independent package validation
--> future official Orca GUI open/export
--> AMP G-code conformance validation
+-> successful official Orca GUI load and slice
+-> sliced-plate package with embedded G-code
+-> successful AMP G-code conformance validation
 ```
 
 ## Non-Claims

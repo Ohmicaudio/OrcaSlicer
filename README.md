@@ -39,6 +39,16 @@ AMP now has an official Orca GUI workflow bridge: [Offline Planner and Official 
 
 Manual workflow guide: [AMP Official Orca Mixed-Nozzle Workflow Guide](docs/guides/AMP_Official_Orca_Mixed_Nozzle_Workflow_Guide.md).
 
+## AMP Milestone 003
+
+AMP can now generate and independently validate an Orca 3MF handoff directly from its offline plan packet: [Automatic Orca 3MF Handoff](docs/milestones/AMP_Milestone_003_Automatic_Orca_3MF_Handoff.md).
+
+- Object-to-tool assignments and the `0.2 / 0.4 / 0.6 / 0.8` nozzle vector are applied automatically.
+- AMP planning and safety metadata is embedded under `Metadata/AMP/`.
+- Official Orca v2.4.1 loaded and sliced the generated project.
+- Extracted G-code passed AMP conformance validation with `T0`, `T1`, `T2`, and `T3` active.
+- No physical U1 mixed-nozzle validation is claimed; hardware preflight remains `not_ready`.
+
 
 # Download
 
