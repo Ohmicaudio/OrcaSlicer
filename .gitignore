@@ -36,6 +36,7 @@ src/Snapmaker_Orca-doc/
 /deps/DL_CACHE/
 /deps/DL_CACHE
 /outputs/
+**/__pycache__/
 **/.flatpak-builder/
 resources/profiles/user/default
 *.code-workspace
