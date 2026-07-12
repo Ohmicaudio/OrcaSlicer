@@ -229,6 +229,82 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(ObservationError, message):
                     observe_3mf(source)
 
+    def test_rejects_out_of_range_metadata_integer_domains(self) -> None:
+        base = synthetic_model_settings()
+        cases = [
+            (
+                "zero object id",
+                base.replace(b'<object id="2">', b'<object id="0">'),
+                r"object id must be positive: 0",
+            ),
+            (
+                "negative object id",
+                base.replace(b'<object id="2">', b'<object id="-2">'),
+                r"object id must be positive: -2",
+            ),
+            (
+                "zero plate id",
+                base.replace(
+                    b'key="plater_id" value="1"',
+                    b'key="plater_id" value="0"',
+                ),
+                r"plate id must be positive: 0",
+            ),
+            (
+                "negative plate id",
+                base.replace(
+                    b'key="plater_id" value="1"',
+                    b'key="plater_id" value="-1"',
+                ),
+                r"plate id must be positive: -1",
+            ),
+            (
+                "zero referenced object id",
+                base.replace(
+                    b'key="object_id" value="2"',
+                    b'key="object_id" value="0"',
+                ),
+                r"plate 1 object id must be positive: 0",
+            ),
+            (
+                "negative referenced object id",
+                base.replace(
+                    b'key="object_id" value="2"',
+                    b'key="object_id" value="-2"',
+                ),
+                r"plate 1 object id must be positive: -2",
+            ),
+            (
+                "negative extruder",
+                base.replace(
+                    b'key="extruder" value=" 2 "',
+                    b'key="extruder" value="-1"',
+                ),
+                r"object 2 extruder must be nonnegative: -1",
+            ),
+        ]
+        for label, model_settings, message in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / "out-of-range.3mf"
+                write_synthetic_3mf(source, model_settings=model_settings)
+
+                with self.assertRaisesRegex(ObservationError, message):
+                    observe_3mf(source)
+
+    def test_treats_zero_extruder_as_inherited_assignment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "inherited-extruder.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'key="extruder" value=" 2 "', b'key="extruder" value="0"'
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            report = observe_3mf(source)
+
+            self.assertIsNone(report["objects"][0]["material_assignment"])
+            self.assertIsNone(report["objects"][0]["resolved_material"])
+            self.assertEqual(report["objects"][0]["warnings"], [])
+
     def test_rejects_duplicate_plate_id(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "duplicate-plate.3mf"
@@ -328,6 +404,85 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertEqual(
                 report["warnings"],
                 ["project material profile/color length mismatch: 1 profiles, 2 colors"],
+            )
+
+    def test_warns_and_clears_invalid_material_vector_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "invalid-material-entries.3mf"
+            project_settings = synthetic_project_settings()
+            project_settings["filament_settings_id"] = [
+                "Basic PLA",
+                {"name": "Nested"},
+                ["Nested"],
+                7,
+                True,
+                None,
+            ]
+            project_settings["filament_colour"] = [
+                "#111111",
+                {"rgb": "#222222"},
+                ["#333333"],
+                4.5,
+                False,
+                None,
+            ]
+            write_synthetic_3mf(source, project_settings=project_settings)
+
+            report = observe_3mf(source)
+
+            self.assertEqual(
+                report["materials"],
+                [
+                    {"slot": 1, "profile": "Basic PLA", "color": "#111111"},
+                    {"slot": 2, "profile": None, "color": None},
+                    {"slot": 3, "profile": None, "color": None},
+                    {"slot": 4, "profile": None, "color": None},
+                    {"slot": 5, "profile": None, "color": None},
+                    {"slot": 6, "profile": None, "color": None},
+                ],
+            )
+            self.assertEqual(
+                report["warnings"],
+                [
+                    "project filament_colour slot 2 must be a string or null; got object",
+                    "project filament_colour slot 3 must be a string or null; got list",
+                    "project filament_colour slot 4 must be a string or null; got number",
+                    "project filament_colour slot 5 must be a string or null; got boolean",
+                    "project filament_settings_id slot 2 must be a string or null; got object",
+                    "project filament_settings_id slot 3 must be a string or null; got list",
+                    "project filament_settings_id slot 4 must be a string or null; got number",
+                    "project filament_settings_id slot 5 must be a string or null; got boolean",
+                ],
+            )
+
+    def test_warns_and_omits_invalid_nozzle_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "invalid-nozzle-entries.3mf"
+            project_settings = synthetic_project_settings()
+            project_settings["nozzle_diameter"] = [
+                "0.4",
+                0.6,
+                1,
+                None,
+                {"diameter": 0.8},
+                [1.0],
+                True,
+            ]
+            write_synthetic_3mf(source, project_settings=project_settings)
+
+            report = observe_3mf(source)
+
+            self.assertEqual(
+                report["physical_tools"]["nozzle_diameters"], ["0.4", "0.6", "1"]
+            )
+            self.assertEqual(
+                report["warnings"],
+                [
+                    "project nozzle_diameter slot 4 must be a string or numeric scalar; got null",
+                    "project nozzle_diameter slot 5 must be a string or numeric scalar; got object",
+                    "project nozzle_diameter slot 6 must be a string or numeric scalar; got list",
+                    "project nozzle_diameter slot 7 must be a string or numeric scalar; got boolean",
+                ],
             )
 
     def test_returns_metadata_in_deterministic_order(self) -> None:

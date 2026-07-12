@@ -73,13 +73,18 @@ def metadata_map(node: ET.Element) -> dict[str, str]:
     }
 
 
-def parse_required_int(value: str | None, context: str) -> int:
+def parse_required_int(
+    value: str | None, context: str, *, minimum: int, domain: str
+) -> int:
     if value is None:
         raise ObservationError(f"missing {context}")
     try:
-        return int(value.strip())
+        parsed = int(value.strip())
     except ValueError as exc:
         raise ObservationError(f"invalid {context}: {value!r}") from exc
+    if parsed < minimum:
+        raise ObservationError(f"{context} must be {domain}: {parsed}")
+    return parsed
 
 
 def read_list_setting(
@@ -90,6 +95,50 @@ def read_list_setting(
         warnings.append(f"project {key} is not a list")
         return []
     return values
+
+
+def json_value_kind(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "list"
+    if isinstance(value, (int, float)):
+        return "number"
+    return type(value).__name__
+
+
+def validate_nullable_string_entries(
+    values: list[Any], key: str, warnings: list[str]
+) -> list[str | None]:
+    validated: list[str | None] = []
+    for slot, value in enumerate(values, start=1):
+        if value is None or isinstance(value, str):
+            validated.append(value)
+            continue
+        warnings.append(
+            f"project {key} slot {slot} must be a string or null; "
+            f"got {json_value_kind(value)}"
+        )
+        validated.append(None)
+    return validated
+
+
+def validate_nozzle_entries(values: list[Any], warnings: list[str]) -> list[str]:
+    validated: list[str] = []
+    for slot, value in enumerate(values, start=1):
+        is_numeric = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if isinstance(value, str) or is_numeric:
+            validated.append(str(value))
+            continue
+        warnings.append(
+            f"project nozzle_diameter slot {slot} must be a string or numeric scalar; "
+            f"got {json_value_kind(value)}"
+        )
+    return validated
 
 
 def parse_root_metadata(data: bytes) -> tuple[dict[str, Any], list[str]]:
@@ -130,6 +179,11 @@ def parse_project_settings(
             "project material profile/color length mismatch: "
             f"{len(profiles)} profiles, {len(colors)} colors"
         )
+    nozzle_diameters = validate_nozzle_entries(nozzles, warnings)
+    profiles = validate_nullable_string_entries(
+        profiles, "filament_settings_id", warnings
+    )
+    colors = validate_nullable_string_entries(colors, "filament_colour", warnings)
     count = max(len(profiles), len(colors))
     materials = [
         {
@@ -146,7 +200,7 @@ def parse_project_settings(
         "wall_generator": payload.get("wall_generator"),
     }
     physical_tools = {
-        "nozzle_diameters": [str(value) for value in nozzles],
+        "nozzle_diameters": nozzle_diameters,
         "source_member": PROJECT_SETTINGS,
     }
     return project, physical_tools, materials, warnings
@@ -165,16 +219,22 @@ def parse_model_settings(
     for node in root:
         if local_name(node.tag) != "object":
             continue
-        object_id = parse_required_int(node.attrib.get("id"), "object id")
+        object_id = parse_required_int(
+            node.attrib.get("id"), "object id", minimum=1, domain="positive"
+        )
         if object_id in seen_ids:
             raise ObservationError(f"duplicate object id: {object_id}")
         seen_ids.add(object_id)
         metadata = metadata_map(node)
         assignment = None
         if "extruder" in metadata:
-            assignment = parse_required_int(
-                metadata["extruder"], f"object {object_id} extruder"
+            parsed_assignment = parse_required_int(
+                metadata["extruder"],
+                f"object {object_id} extruder",
+                minimum=0,
+                domain="nonnegative",
             )
+            assignment = None if parsed_assignment == 0 else parsed_assignment
         name = metadata.get("name", f"object_{object_id}")
         tokens = sorted(set(re.findall(r"[a-z0-9]+", Path(name).stem.lower())))
         object_warnings = []
@@ -210,12 +270,19 @@ def parse_model_settings(
             if "plater_id" in metadata
             else metadata.get("index")
         )
-        plate_id = parse_required_int(plate_id_value, "plate id")
+        plate_id = parse_required_int(
+            plate_id_value, "plate id", minimum=1, domain="positive"
+        )
         if plate_id in seen_plate_ids:
             raise ObservationError(f"duplicate plate id: {plate_id}")
         seen_plate_ids.add(plate_id)
         object_ids = sorted(
-            parse_required_int(item.attrib.get("value"), f"plate {plate_id} object id")
+            parse_required_int(
+                item.attrib.get("value"),
+                f"plate {plate_id} object id",
+                minimum=1,
+                domain="positive",
+            )
             for item in node.iter()
             if local_name(item.tag) == "metadata"
             and item.attrib.get("key") == "object_id"
