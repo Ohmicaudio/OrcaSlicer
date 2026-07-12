@@ -203,6 +203,9 @@ def generate_handoff(
 
     plan = load_plan(packet_dir)
     embedded_members = packet_members(packet_dir)
+    embedded_members[f"{AMP_METADATA_PREFIX}source_template.sha256"] = (
+        sha256_file(template) + "\n"
+    ).encode("ascii")
     embedded_members[f"{AMP_METADATA_PREFIX}handoff_manifest.json"] = (
         json.dumps(
             handoff_manifest(template, packet_dir, plan), indent=2, sort_keys=True
