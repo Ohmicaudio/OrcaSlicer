@@ -1155,7 +1155,6 @@ def stage_report_output(output: StagedReportOutput) -> None:
             output.temp_path = Path(handle.name)
             handle.write(output.content)
     except (OSError, UnicodeError) as exc:
-        cleanup_report_artifacts([output])
         raise ObservationError(
             f"failed to stage report destination {destination}: {exc}"
         ) from exc
@@ -1188,8 +1187,13 @@ def commit_report_outputs(outputs: list[StagedReportOutput]) -> None:
             stage_report_output(output)
         for output in outputs:
             backup_report_output(output)
-    except ObservationError:
-        cleanup_report_artifacts(outputs)
+    except ObservationError as exc:
+        cleanup_errors = cleanup_report_artifacts(outputs)
+        if cleanup_errors:
+            raise ObservationError(
+                f"{exc}; pre-commit cleanup errors: "
+                + "; ".join(cleanup_errors)
+            ) from exc
         raise
 
     current: StagedReportOutput | None = None
@@ -1352,6 +1356,27 @@ def write_reports(
     commit_report_outputs(outputs)
 
 
+def silence_stdout() -> None:
+    try:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    except (OSError, UnicodeError):
+        pass
+
+
+def write_json_stdout(report: dict[str, Any]) -> None:
+    content = serialize_json(report)
+    try:
+        sys.stdout.write(content)
+        sys.stdout.flush()
+    except BrokenPipeError:
+        raise
+    except (OSError, UnicodeError) as exc:
+        silence_stdout()
+        raise ObservationError(
+            f"failed to write observation JSON to stdout: {exc}"
+        ) from exc
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--3mf", required=True, type=Path, dest="source")
@@ -1362,7 +1387,7 @@ def main(argv: list[str] | None = None) -> int:
         validate_report_paths(args.source, args.out_json, args.out_md)
         report = observe_3mf(args.source)
         if args.out_json is None and args.out_md is None:
-            sys.stdout.write(serialize_json(report))
+            write_json_stdout(report)
         else:
             write_reports(
                 report,
@@ -1371,15 +1396,7 @@ def main(argv: list[str] | None = None) -> int:
                 markdown_path=args.out_md,
             )
     except BrokenPipeError:
-        try:
-            stdout_fd = sys.stdout.fileno()
-            devnull_fd = os.open(os.devnull, os.O_WRONLY)
-            try:
-                os.dup2(devnull_fd, stdout_fd)
-            finally:
-                os.close(devnull_fd)
-        except (AttributeError, OSError, ValueError):
-            pass
+        silence_stdout()
         return 1
     except ObservationError as exc:
         print(f"AMP 3MF observation failed: {exc}", file=sys.stderr)

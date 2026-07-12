@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 import warnings
@@ -765,12 +766,19 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertTrue(zipfile.is_zipfile(source))
 
     def test_cli_defaults_to_json_stdout_without_writing_a_report(self) -> None:
+        class TrackingStdout(io.StringIO):
+            flushed = False
+
+            def flush(self) -> None:
+                self.flushed = True
+                super().flush()
+
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             source = root / "synthetic.3mf"
             write_synthetic_3mf(source)
             before = sorted(item.name for item in root.iterdir())
-            stdout = io.StringIO()
+            stdout = TrackingStdout()
 
             with mock.patch("sys.stdout", stdout):
                 exit_code = main(["--3mf", str(source)])
@@ -779,6 +787,7 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertEqual(
                 json.loads(stdout.getvalue())["schema_version"], "0.1"
             )
+            self.assertTrue(stdout.flushed)
             self.assertEqual(sorted(item.name for item in root.iterdir()), before)
 
     def test_cli_reports_observation_errors_without_a_traceback(self) -> None:
@@ -852,15 +861,96 @@ class AmpObserve3mfContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "synthetic.3mf"
             write_synthetic_3mf(source)
+            stdout = BrokenPipeStdout()
             stderr = io.StringIO()
 
-            with mock.patch("sys.stdout", BrokenPipeStdout()), mock.patch(
+            with mock.patch("sys.stdout", stdout), mock.patch(
                 "sys.stderr", stderr
             ):
                 exit_code = main(["--3mf", str(source)])
+                replacement = sys.stdout
 
             self.assertEqual(exit_code, 1)
             self.assertEqual(stderr.getvalue(), "")
+            self.assertIsNot(replacement, stdout)
+            replacement.flush()
+            replacement.close()
+
+    def test_cli_treats_flush_time_broken_pipe_without_an_error_report(
+        self,
+    ) -> None:
+        class FlushBrokenPipeStdout(io.StringIO):
+            def flush(self) -> None:
+                raise BrokenPipeError("closed during flush")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            stdout = FlushBrokenPipeStdout()
+            stderr = io.StringIO()
+
+            with mock.patch("sys.stdout", stdout), mock.patch(
+                "sys.stderr", stderr
+            ):
+                exit_code = main(["--3mf", str(source)])
+                replacement = sys.stdout
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(stderr.getvalue(), "")
+            self.assertEqual(json.loads(stdout.getvalue())["schema_version"], "0.1")
+            replacement.close()
+
+    def test_cli_wraps_immediate_stdout_oserror(self) -> None:
+        class FailingStdout(io.StringIO):
+            def write(self, value: str) -> int:
+                raise OSError("stdout unavailable")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            stdout = FailingStdout()
+            stderr = io.StringIO()
+
+            with mock.patch("sys.stdout", stdout), mock.patch(
+                "sys.stderr", stderr
+            ):
+                exit_code = main(["--3mf", str(source)])
+                replacement = sys.stdout
+
+            self.assertEqual(exit_code, 2)
+            self.assertIn("stdout", stderr.getvalue())
+            self.assertIn("stdout unavailable", stderr.getvalue())
+            self.assertNotIn("Traceback", stderr.getvalue())
+            self.assertIsNot(replacement, stdout)
+            replacement.flush()
+            replacement.close()
+
+    def test_cli_wraps_stdout_unicode_encode_error(self) -> None:
+        class IncompatibleEncodingStdout(io.StringIO):
+            def write(self, value: str) -> int:
+                raise UnicodeEncodeError(
+                    "ascii", "\N{LATIN SMALL LETTER E WITH ACUTE}", 0, 1, "ordinal"
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            stdout = IncompatibleEncodingStdout()
+            stderr = io.StringIO()
+
+            with mock.patch("sys.stdout", stdout), mock.patch(
+                "sys.stderr", stderr
+            ):
+                exit_code = main(["--3mf", str(source)])
+                replacement = sys.stdout
+
+            self.assertEqual(exit_code, 2)
+            self.assertIn("stdout", stderr.getvalue())
+            self.assertIn("can't encode", stderr.getvalue())
+            self.assertNotIn("Traceback", stderr.getvalue())
+            self.assertIsNot(replacement, stdout)
+            replacement.flush()
+            replacement.close()
 
     def test_write_reports_wraps_unicode_cleanup_error_with_destination(
         self,
@@ -891,6 +981,50 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                         json_path=json_path,
                         markdown_path=None,
                     )
+
+    def test_precommit_failure_discloses_temp_cleanup_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            write_synthetic_3mf(source)
+            json_path.write_text("existing\n", encoding="utf-8")
+            report = observe_3mf(source)
+            real_unlink = Path.unlink
+
+            def fail_temp_cleanup(
+                path: Path, *, missing_ok: bool = False
+            ) -> None:
+                if path.suffix == ".tmp":
+                    raise OSError("temp unlink failed")
+                real_unlink(path, missing_ok=missing_ok)
+
+            with mock.patch(
+                "tools.amp_observe_3mf.shutil.copy2",
+                side_effect=OSError("backup copy failed"),
+            ), mock.patch.object(Path, "unlink", fail_temp_cleanup):
+                with self.assertRaises(ObservationError) as raised:
+                    write_reports(
+                        report,
+                        source_path=source,
+                        json_path=json_path,
+                        markdown_path=None,
+                    )
+
+            leftovers = list(root.glob(".*.tmp"))
+            for leftover in leftovers:
+                leftover.unlink()
+
+            message = str(raised.exception)
+            self.assertEqual(
+                json_path.read_text(encoding="utf-8"), "existing\n"
+            )
+            self.assertEqual(len(leftovers), 1)
+            self.assertFalse(list(root.glob(".*.bak")))
+            self.assertIn(str(json_path), message)
+            self.assertIn("backup copy failed", message)
+            self.assertIn("pre-commit cleanup errors", message)
+            self.assertIn("temp unlink failed", message)
 
     def test_write_reports_wraps_path_preflight_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
