@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -24,10 +25,30 @@ MODEL_SETTINGS = "Metadata/model_settings.config"
 PROJECT_SETTINGS = "Metadata/project_settings.config"
 REQUIRED_MEMBERS = {ROOT_MODEL, MODEL_SETTINGS, PROJECT_SETTINGS}
 SCHEMA_VERSION = "0.1"
+CORE_NAMESPACE = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
+PRODUCTION_NAMESPACE = (
+    "http://schemas.microsoft.com/3dmanufacturing/production/2015/06"
+)
+CORE_OBJECT = f"{{{CORE_NAMESPACE}}}object"
+CORE_COMPONENT = f"{{{CORE_NAMESPACE}}}component"
+CORE_MESH = f"{{{CORE_NAMESPACE}}}mesh"
+CORE_VERTICES = f"{{{CORE_NAMESPACE}}}vertices"
+CORE_VERTEX = f"{{{CORE_NAMESPACE}}}vertex"
+CORE_TRIANGLES = f"{{{CORE_NAMESPACE}}}triangles"
+CORE_TRIANGLE = f"{{{CORE_NAMESPACE}}}triangle"
+PRODUCTION_PATH = f"{{{PRODUCTION_NAMESPACE}}}path"
 
 
 class ObservationError(ValueError):
     """Raised when a 3MF cannot produce a trustworthy observation report."""
+
+
+@dataclass(frozen=True)
+class ObjectModelReference:
+    member_name: str
+    canonical_key: str
+    object_id: int
+    transform: tuple[float, ...] | None
 
 
 def sha256_file(path: Path) -> str:
@@ -183,15 +204,116 @@ def parse_root_metadata(data: bytes) -> tuple[dict[str, Any], list[str]]:
     return project, warnings
 
 
-def parse_root_object_paths(data: bytes) -> dict[int, str]:
+def parse_finite_float(value: str | None, context: str) -> float:
+    if value is None:
+        raise ObservationError(f"missing {context}")
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ObservationError(f"invalid {context}: {value!r}") from exc
+    if not math.isfinite(parsed):
+        raise ObservationError(f"non-finite {context}: {value!r}")
+    return parsed
+
+
+def parse_component_transform(
+    value: str | None, context: str
+) -> tuple[float, ...] | None:
+    if value is None:
+        return None
+    parts = value.split()
+    if len(parts) != 12:
+        raise ObservationError(
+            f"invalid {context}: expected 12 values, got {len(parts)}"
+        )
+    return tuple(
+        parse_finite_float(part, f"{context} value {index}")
+        for index, part in enumerate(parts, start=1)
+    )
+
+
+def has_noncanonical_percent_encoding(value: str) -> bool:
+    unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    index = 0
+    while index < len(value):
+        if value[index] != "%":
+            index += 1
+            continue
+        if index + 2 >= len(value) or not re.fullmatch(
+            r"[0-9A-Fa-f]{2}", value[index + 1 : index + 3]
+        ):
+            return True
+        decoded = chr(int(value[index + 1 : index + 3], 16))
+        if decoded in unreserved or decoded in "/\\":
+            return True
+        index += 3
+    return False
+
+
+def canonical_object_model_name(
+    value: str, context: str, *, reference: bool
+) -> tuple[str, str]:
+    invalid = (
+        not value
+        or "\\" in value
+        or "?" in value
+        or "#" in value
+        or has_noncanonical_percent_encoding(value)
+        or (reference and (not value.startswith("/") or value.startswith("//")))
+        or (not reference and value.startswith("/"))
+    )
+    member_name = value[1:] if reference and value.startswith("/") else value
+    segments = member_name.split("/")
+    invalid = invalid or any(segment in {"", ".", ".."} for segment in segments)
+    invalid = invalid or len(segments) < 3
+    if not invalid:
+        invalid = (
+            segments[0].casefold() != "3d"
+            or segments[1].casefold() != "objects"
+        )
+    if invalid:
+        raise ObservationError(f"invalid {context}: {value!r}")
+    return member_name, member_name.casefold()
+
+
+def looks_like_object_model_member(name: str) -> bool:
+    segments = [
+        segment
+        for segment in re.split(r"[/\\]+", name.lstrip("/"))
+        if segment
+    ]
+    return (
+        len(segments) >= 2
+        and segments[0].casefold() == "3d"
+        and segments[1].casefold() == "objects"
+    )
+
+
+def object_model_member_lookup(
+    infos: list[zipfile.ZipInfo],
+) -> dict[str, list[zipfile.ZipInfo]]:
+    result: dict[str, list[zipfile.ZipInfo]] = {}
+    for info in infos:
+        if not looks_like_object_model_member(info.filename):
+            continue
+        _, canonical_key = canonical_object_model_name(
+            info.filename, "object-model ZIP member name", reference=False
+        )
+        result.setdefault(canonical_key, []).append(info)
+    return result
+
+
+def parse_root_object_references(
+    data: bytes,
+) -> dict[int, tuple[ObjectModelReference, ...]]:
     try:
         root = ET.fromstring(data)
     except ET.ParseError as exc:
         raise ObservationError(f"invalid {ROOT_MODEL}: {exc}") from exc
-    result: dict[int, str] = {}
+    result: dict[int, tuple[ObjectModelReference, ...]] = {}
     seen_ids: set[int] = set()
     for obj in root.iter():
-        if local_name(obj.tag) != "object":
+        if obj.tag != CORE_OBJECT:
             continue
         object_id = parse_required_int(
             obj.attrib.get("id"),
@@ -202,55 +324,179 @@ def parse_root_object_paths(data: bytes) -> dict[int, str]:
         if object_id in seen_ids:
             raise ObservationError(f"duplicate root object id: {object_id}")
         seen_ids.add(object_id)
-        paths: set[str] = set()
+        references: list[ObjectModelReference] = []
         for component in obj.iter():
-            if local_name(component.tag) != "component":
+            if component.tag != CORE_COMPONENT:
                 continue
-            raw_path = component.attrib.get("path")
+            qualified_path = component.attrib.get(PRODUCTION_PATH)
+            fallback_path = component.attrib.get("path")
+            if (
+                qualified_path is not None
+                and fallback_path is not None
+                and qualified_path != fallback_path
+            ):
+                raise ObservationError(
+                    "conflicting qualified and unqualified paths for "
+                    f"object {object_id}"
+                )
+            raw_path = (
+                qualified_path if qualified_path is not None else fallback_path
+            )
             if raw_path is None:
                 continue
-            member_name = raw_path.lstrip("/")
-            if not member_name:
-                raise ObservationError(
-                    "invalid referenced object-model path for "
-                    f"object {object_id}: {raw_path!r}"
+            member_name, canonical_key = canonical_object_model_name(
+                raw_path,
+                f"referenced object-model path for object {object_id}",
+                reference=True,
+            )
+            referenced_object_id = parse_required_int(
+                component.attrib.get("objectid"),
+                f"root object {object_id} component objectid",
+                minimum=1,
+                domain="positive",
+            )
+            transform = parse_component_transform(
+                component.attrib.get("transform"),
+                f"root object {object_id} component transform",
+            )
+            references.append(
+                ObjectModelReference(
+                    member_name=member_name,
+                    canonical_key=canonical_key,
+                    object_id=referenced_object_id,
+                    transform=transform,
                 )
-            paths.add(member_name)
-        if len(paths) == 1:
-            result[object_id] = next(iter(paths))
-        elif len(paths) > 1:
+            )
+        canonical_keys = {reference.canonical_key for reference in references}
+        if len(canonical_keys) > 1:
             raise ObservationError(
                 f"object {object_id} references multiple model members"
             )
+        if references:
+            result[object_id] = tuple(references)
     return result
 
 
-def stream_geometry(handle: BinaryIO, member_name: str) -> dict[str, Any]:
+def transform_vertex(
+    values: tuple[float, float, float],
+    reference: ObjectModelReference,
+    member_name: str,
+) -> list[float]:
+    if reference.transform is None:
+        return list(values)
+    x, y, z = values
+    matrix = reference.transform
+    transformed = [
+        x * matrix[0] + y * matrix[3] + z * matrix[6] + matrix[9],
+        x * matrix[1] + y * matrix[4] + z * matrix[7] + matrix[10],
+        x * matrix[2] + y * matrix[5] + z * matrix[8] + matrix[11],
+    ]
+    if not all(math.isfinite(value) for value in transformed):
+        raise ObservationError(
+            "non-finite transformed coordinate for object-model member "
+            f"{member_name} object {reference.object_id}"
+        )
+    return transformed
+
+
+def stream_geometry(
+    handle: BinaryIO,
+    member_name: str,
+    references: tuple[ObjectModelReference, ...],
+) -> dict[str, Any]:
     vertex_count = 0
     triangle_count = 0
     minimum = [float("inf"), float("inf"), float("inf")]
     maximum = [float("-inf"), float("-inf"), float("-inf")]
+    references_by_object: dict[int, list[ObjectModelReference]] = {}
+    for reference in references:
+        references_by_object.setdefault(reference.object_id, []).append(reference)
+    element_stack: list[ET.Element] = []
+    object_ids_by_element: dict[int, int] = {}
+    seen_object_ids: set[int] = set()
+    found_object_ids: set[int] = set()
     try:
-        for _, element in ET.iterparse(handle, events=("end",)):
-            name = local_name(element.tag)
-            if name == "vertex":
-                values = [float(element.attrib[key]) for key in ("x", "y", "z")]
-                vertex_count += 1
-                minimum = [
-                    min(current, value)
-                    for current, value in zip(minimum, values)
-                ]
-                maximum = [
-                    max(current, value)
-                    for current, value in zip(maximum, values)
-                ]
-            elif name == "triangle":
-                triangle_count += 1
+        for event, element in ET.iterparse(handle, events=("start", "end")):
+            if event == "start":
+                element_stack.append(element)
+                if element.tag == CORE_OBJECT:
+                    object_id = parse_required_int(
+                        element.attrib.get("id"),
+                        f"object-model member {member_name} object id",
+                        minimum=1,
+                        domain="positive",
+                    )
+                    if object_id in seen_object_ids:
+                        raise ObservationError(
+                            f"duplicate object id {object_id} in object-model "
+                            f"member {member_name}"
+                        )
+                    seen_object_ids.add(object_id)
+                    object_ids_by_element[id(element)] = object_id
+                    if object_id in references_by_object:
+                        found_object_ids.add(object_id)
+                continue
+
+            is_vertex = (
+                element.tag == CORE_VERTEX
+                and len(element_stack) >= 4
+                and element_stack[-2].tag == CORE_VERTICES
+                and element_stack[-3].tag == CORE_MESH
+                and element_stack[-4].tag == CORE_OBJECT
+            )
+            is_triangle = (
+                element.tag == CORE_TRIANGLE
+                and len(element_stack) >= 4
+                and element_stack[-2].tag == CORE_TRIANGLES
+                and element_stack[-3].tag == CORE_MESH
+                and element_stack[-4].tag == CORE_OBJECT
+            )
+            if is_vertex or is_triangle:
+                object_id = object_ids_by_element[id(element_stack[-4])]
+                object_references = references_by_object.get(object_id, [])
+                if is_vertex and object_references:
+                    coordinates = tuple(
+                        parse_finite_float(
+                            element.attrib.get(axis),
+                            f"object-model member {member_name} object {object_id} "
+                            f"vertex {axis} coordinate",
+                        )
+                        for axis in ("x", "y", "z")
+                    )
+                    for reference in object_references:
+                        values = transform_vertex(
+                            coordinates, reference, member_name
+                        )
+                        minimum = [
+                            min(current, value)
+                            for current, value in zip(minimum, values)
+                        ]
+                        maximum = [
+                            max(current, value)
+                            for current, value in zip(maximum, values)
+                        ]
+                    vertex_count += len(object_references)
+                elif is_triangle:
+                    triangle_count += len(object_references)
+
+            if element.tag == CORE_OBJECT:
+                object_ids_by_element.pop(id(element), None)
+            element_stack.pop()
+            if element_stack:
+                element_stack[-1].remove(element)
             element.clear()
-    except (ET.ParseError, KeyError, ValueError) as exc:
+    except ET.ParseError as exc:
         raise ObservationError(
             f"invalid object-model member {member_name}: {exc}"
         ) from exc
+    missing_object_ids = sorted(set(references_by_object) - found_object_ids)
+    if missing_object_ids:
+        missing = ", ".join(str(object_id) for object_id in missing_object_ids)
+        label = "id" if len(missing_object_ids) == 1 else "ids"
+        raise ObservationError(
+            f"missing referenced object {label} {missing} in object-model "
+            f"member {member_name}"
+        )
     if vertex_count == 0:
         bounds = None
         dimensions = None
@@ -436,7 +682,7 @@ def observe_3mf(source: Path) -> dict[str, Any]:
             validate_member_counts(infos, REQUIRED_MEMBERS)
             root_data = archive.read(ROOT_MODEL)
             root_project, root_warnings = parse_root_metadata(root_data)
-            root_object_paths = parse_root_object_paths(root_data)
+            root_object_references = parse_root_object_references(root_data)
             settings_project, physical_tools, materials, project_warnings = (
                 parse_project_settings(read_json_member(archive, PROJECT_SETTINGS))
             )
@@ -444,22 +690,35 @@ def observe_3mf(source: Path) -> dict[str, Any]:
             objects, plates, model_warnings = parse_model_settings(
                 archive.read(MODEL_SETTINGS), materials
             )
-            member_counts = Counter(archive.namelist())
+            member_lookup = object_model_member_lookup(infos)
             for item in objects:
-                member_name = root_object_paths.get(item["object_id"])
-                item["source_model_member"] = member_name
-                if member_name is None:
+                references = root_object_references.get(item["object_id"])
+                if references is None:
                     continue
-                if member_counts[member_name] == 0:
+                referenced_name = references[0].member_name
+                entries = member_lookup.get(references[0].canonical_key, [])
+                if not entries:
                     raise ObservationError(
-                        f"missing referenced object-model member: {member_name}"
+                        "missing referenced object-model member: "
+                        f"{referenced_name}"
                     )
-                if member_counts[member_name] > 1:
+                if len(entries) > 1:
+                    entry_names = {entry.filename for entry in entries}
+                    if len(entry_names) == 1:
+                        raise ObservationError(
+                            "duplicate referenced object-model member: "
+                            f"{referenced_name}"
+                        )
                     raise ObservationError(
-                        f"duplicate referenced object-model member: {member_name}"
+                        "ambiguous canonical object-model member: "
+                        + ", ".join(sorted(entry_names))
                     )
-                with archive.open(member_name, "r") as handle:
-                    item["geometry"] = stream_geometry(handle, member_name)
+                member_info = entries[0]
+                item["source_model_member"] = member_info.filename
+                with archive.open(member_info, "r") as handle:
+                    item["geometry"] = stream_geometry(
+                        handle, member_info.filename, references
+                    )
             warnings = sorted(root_warnings + project_warnings + model_warnings)
             return {
                 "schema_version": SCHEMA_VERSION,

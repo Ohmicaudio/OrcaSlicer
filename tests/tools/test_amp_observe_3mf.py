@@ -8,6 +8,7 @@ import warnings
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 from tools.amp_observe_3mf import ObservationError, observe_3mf
 
@@ -15,6 +16,16 @@ from tools.amp_observe_3mf import ObservationError, observe_3mf
 MODEL_SETTINGS = "Metadata/model_settings.config"
 PROJECT_SETTINGS = "Metadata/project_settings.config"
 ROOT_MODEL = "3D/3dmodel.model"
+CORE_NAMESPACE = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
+PRODUCTION_NAMESPACE = (
+    "http://schemas.microsoft.com/3dmanufacturing/production/2015/06"
+)
+EXTENSION_NAMESPACE = "urn:amp:observer-test-extension"
+
+Coordinate = float | int | str
+Vertex = tuple[Coordinate, Coordinate, Coordinate]
+Triangle = tuple[int, int, int]
+Mesh = tuple[list[Vertex], list[Triangle]]
 
 
 def sha256(path: Path) -> str:
@@ -22,29 +33,48 @@ def sha256(path: Path) -> str:
 
 
 def object_model_xml(
-    vertices: list[tuple[float, float, float]],
-    triangles: list[tuple[int, int, int]],
+    vertices: list[Vertex],
+    triangles: list[Triangle],
 ) -> bytes:
-    namespace = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
-    ET.register_namespace("", namespace)
-    root = ET.Element(f"{{{namespace}}}model", {"unit": "millimeter"})
-    resources = ET.SubElement(root, f"{{{namespace}}}resources")
-    obj = ET.SubElement(resources, f"{{{namespace}}}object", {"id": "1", "type": "model"})
-    mesh = ET.SubElement(obj, f"{{{namespace}}}mesh")
-    vertices_node = ET.SubElement(mesh, f"{{{namespace}}}vertices")
-    for x, y, z in vertices:
-        ET.SubElement(
-            vertices_node,
-            f"{{{namespace}}}vertex",
-            {"x": str(x), "y": str(y), "z": str(z)},
+    return object_model_objects_xml([(1, [(vertices, triangles)])])
+
+
+def object_model_objects_xml(
+    objects: list[tuple[int, list[Mesh]]], *, extension_noise: bool = False
+) -> bytes:
+    ET.register_namespace("", CORE_NAMESPACE)
+    ET.register_namespace("e", EXTENSION_NAMESPACE)
+    root = ET.Element(f"{{{CORE_NAMESPACE}}}model", {"unit": "millimeter"})
+    resources = ET.SubElement(root, f"{{{CORE_NAMESPACE}}}resources")
+    for object_id, meshes in objects:
+        obj = ET.SubElement(
+            resources,
+            f"{{{CORE_NAMESPACE}}}object",
+            {"id": str(object_id), "type": "model"},
         )
-    triangles_node = ET.SubElement(mesh, f"{{{namespace}}}triangles")
-    for v1, v2, v3 in triangles:
-        ET.SubElement(
-            triangles_node,
-            f"{{{namespace}}}triangle",
-            {"v1": str(v1), "v2": str(v2), "v3": str(v3)},
-        )
+        for vertices, triangles in meshes:
+            mesh = ET.SubElement(obj, f"{{{CORE_NAMESPACE}}}mesh")
+            vertices_node = ET.SubElement(mesh, f"{{{CORE_NAMESPACE}}}vertices")
+            for x, y, z in vertices:
+                ET.SubElement(
+                    vertices_node,
+                    f"{{{CORE_NAMESPACE}}}vertex",
+                    {"x": str(x), "y": str(y), "z": str(z)},
+                )
+            triangles_node = ET.SubElement(mesh, f"{{{CORE_NAMESPACE}}}triangles")
+            for v1, v2, v3 in triangles:
+                ET.SubElement(
+                    triangles_node,
+                    f"{{{CORE_NAMESPACE}}}triangle",
+                    {"v1": str(v1), "v2": str(v2), "v3": str(v3)},
+                )
+        if extension_noise:
+            ET.SubElement(
+                obj,
+                f"{{{EXTENSION_NAMESPACE}}}vertex",
+                {"x": "-100", "y": "-100", "z": "-100"},
+            )
+            ET.SubElement(obj, f"{{{EXTENSION_NAMESPACE}}}triangle")
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
@@ -73,17 +103,50 @@ def synthetic_project_settings() -> dict[str, object]:
 
 
 def synthetic_root_model(
-    *, object_id: str = "2", component_path: str = "/3D/Objects/detail.model"
+    *,
+    object_id: str = "2",
+    component_path: str = "/3D/Objects/detail.model",
+    referenced_object_id: str = "1",
+    transform: str | None = None,
+    qualified_path: bool = True,
+    unqualified_component_path: str | None = None,
+    component_references: list[tuple[str, str, str | None]] | None = None,
 ) -> bytes:
-    return f'''<?xml version="1.0" encoding="UTF-8"?>
-<model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" unit="millimeter">
-  <metadata name="Title">Synthetic Project</metadata>
-  <metadata name="Designer">AMP Tests</metadata>
-  <metadata name="License">Test Fixture</metadata>
-  <metadata name="Application">AMP Synthetic</metadata>
-  <resources><object id="{object_id}" type="model"><components><component objectid="1" path="{component_path}"/></components></object></resources>
-  <build><item objectid="{object_id}"/></build>
-</model>'''.encode("utf-8")
+    ET.register_namespace("", CORE_NAMESPACE)
+    ET.register_namespace("p", PRODUCTION_NAMESPACE)
+    root = ET.Element(f"{{{CORE_NAMESPACE}}}model", {"unit": "millimeter"})
+    for name, value in (
+        ("Title", "Synthetic Project"),
+        ("Designer", "AMP Tests"),
+        ("License", "Test Fixture"),
+        ("Application", "AMP Synthetic"),
+    ):
+        node = ET.SubElement(root, f"{{{CORE_NAMESPACE}}}metadata", {"name": name})
+        node.text = value
+    resources = ET.SubElement(root, f"{{{CORE_NAMESPACE}}}resources")
+    outer_object = ET.SubElement(
+        resources,
+        f"{{{CORE_NAMESPACE}}}object",
+        {"id": object_id, "type": "model"},
+    )
+    components = ET.SubElement(outer_object, f"{{{CORE_NAMESPACE}}}components")
+    references = component_references or [
+        (component_path, referenced_object_id, transform)
+    ]
+    for index, (path, target_object_id, component_transform) in enumerate(references):
+        attributes = {"objectid": target_object_id}
+        if qualified_path:
+            attributes[f"{{{PRODUCTION_NAMESPACE}}}path"] = path
+        else:
+            attributes["path"] = path
+        if index == 0 and unqualified_component_path is not None:
+            attributes["path"] = unqualified_component_path
+        if component_transform is not None:
+            attributes["transform"] = component_transform
+        ET.SubElement(components, f"{{{CORE_NAMESPACE}}}component", attributes)
+    build = ET.SubElement(root, f"{{{CORE_NAMESPACE}}}build")
+    ET.SubElement(build, f"{{{CORE_NAMESPACE}}}item", {"objectid": object_id})
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
 def write_synthetic_3mf(
@@ -92,6 +155,8 @@ def write_synthetic_3mf(
     model_settings: bytes | None = None,
     project_settings: dict[str, object] | None = None,
     root_model: bytes | None = None,
+    object_model_data: bytes | None = None,
+    object_model_members: list[tuple[str, bytes]] | None = None,
 ) -> None:
     if model_settings is None:
         model_settings = synthetic_model_settings()
@@ -99,16 +164,20 @@ def write_synthetic_3mf(
         project_settings = synthetic_project_settings()
     if root_model is None:
         root_model = synthetic_root_model()
-    detail = object_model_xml(
-        [(0, 0, 0), (10, 0, 0), (0, 5, 2)],
-        [(0, 1, 2)],
-    )
+    if object_model_data is None:
+        object_model_data = object_model_xml(
+            [(0, 0, 0), (10, 0, 0), (0, 5, 2)],
+            [(0, 1, 2)],
+        )
+    if object_model_members is None:
+        object_model_members = [("3D/Objects/detail.model", object_model_data)]
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", b"<Types/>")
         archive.writestr(ROOT_MODEL, root_model)
         archive.writestr(MODEL_SETTINGS, model_settings)
         archive.writestr(PROJECT_SETTINGS, json.dumps(project_settings))
-        archive.writestr("3D/Objects/detail.model", detail)
+        for member_name, payload in object_model_members:
+            archive.writestr(member_name, payload)
 
 
 class AmpObserve3mfContractTests(unittest.TestCase):
@@ -170,6 +239,378 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertEqual(geometry["dimensions"], [10.0, 5.0, 2.0])
             self.assertTrue(geometry["streamed"])
             self.assertEqual(report["warnings"], [])
+
+    def test_accepts_unqualified_component_path_as_compatibility_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "unqualified-path.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(qualified_path=False),
+            )
+
+            report = observe_3mf(source)
+
+            self.assertEqual(report["objects"][0]["geometry"]["vertex_count"], 3)
+
+    def test_rejects_conflicting_qualified_and_unqualified_component_paths(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "conflicting-paths.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(
+                    unqualified_component_path="/3D/Objects/other.model"
+                ),
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError,
+                "conflicting qualified and unqualified paths for object 2",
+            ):
+                observe_3mf(source)
+
+    def test_never_reads_referenced_object_model_member_into_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "streaming-read-spy.3mf"
+            write_synthetic_3mf(source)
+            original_read = zipfile.ZipFile.read
+            read_members: list[str] = []
+
+            def tracking_read(
+                archive: zipfile.ZipFile,
+                name: str | zipfile.ZipInfo,
+                pwd: bytes | None = None,
+            ) -> bytes:
+                member_name = (
+                    name.filename if isinstance(name, zipfile.ZipInfo) else name
+                )
+                read_members.append(member_name)
+                return original_read(archive, name, pwd)
+
+            with mock.patch.object(zipfile.ZipFile, "read", new=tracking_read):
+                report = observe_3mf(source)
+
+            self.assertEqual(report["objects"][0]["geometry"]["vertex_count"], 3)
+            self.assertNotIn("3D/Objects/detail.model", read_members)
+            self.assertIn(ROOT_MODEL, read_members)
+
+    def test_streaming_parser_unlinks_high_cardinality_children(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "high-cardinality.3mf"
+            vertex_count = 5000
+            detail = object_model_xml(
+                [(index, index % 11, index % 7) for index in range(vertex_count)],
+                [],
+            )
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(qualified_path=False),
+                object_model_data=detail,
+            )
+            real_iterparse = ET.iterparse
+            retained_element_counts: list[int] = []
+            requested_events: list[tuple[str, ...]] = []
+
+            def tracking_iterparse(handle: object, events: tuple[str, ...]):
+                requested_events.append(events)
+                iterator = real_iterparse(handle, events=events)
+                for event, element in iterator:
+                    yield event, element
+                retained_element_counts.append(sum(1 for _ in iterator.root.iter()))
+
+            with mock.patch(
+                "tools.amp_observe_3mf.ET.iterparse", new=tracking_iterparse
+            ):
+                report = observe_3mf(source)
+
+            self.assertEqual(report["objects"][0]["geometry"]["vertex_count"], 5000)
+            self.assertEqual(requested_events, [("start", "end")])
+            self.assertEqual(retained_element_counts, [1])
+
+    def test_rejects_invalid_vertex_coordinates_contextually(self) -> None:
+        valid_detail = object_model_xml([(1, 2, 3)], [])
+        cases = [
+            ("nan", b'x="1"', b'x="NaN"'),
+            ("positive infinity", b'x="1"', b'x="Infinity"'),
+            ("negative infinity", b'x="1"', b'x="-Infinity"'),
+            ("overflow", b'x="1"', b'x="1e309"'),
+            ("nonnumeric", b'x="1"', b'x="not-a-number"'),
+            ("missing", b' x="1"', b""),
+        ]
+        for label, original, replacement in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / f"invalid-coordinate-{label}.3mf"
+                write_synthetic_3mf(
+                    source,
+                    root_model=synthetic_root_model(qualified_path=False),
+                    object_model_data=valid_detail.replace(
+                        original, replacement, 1
+                    ),
+                )
+
+                with self.assertRaisesRegex(
+                    ObservationError,
+                    r"object-model member 3D/Objects/detail\.model "
+                    r"object 1 vertex x coordinate",
+                ):
+                    observe_3mf(source)
+
+    def test_applies_component_transform_to_geometry_bounds(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "transformed.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(
+                    transform="2 0 0 0 3 0 0 0 4 7 11 13"
+                ),
+            )
+
+            geometry = observe_3mf(source)["objects"][0]["geometry"]
+
+            self.assertEqual(geometry["bounds"]["min"], [7.0, 11.0, 13.0])
+            self.assertEqual(geometry["bounds"]["max"], [27.0, 26.0, 21.0])
+            self.assertEqual(geometry["dimensions"], [20.0, 15.0, 8.0])
+
+    def test_rejects_invalid_component_transforms_contextually(self) -> None:
+        cases = [
+            ("wrong count", "1 0 0 0 1 0 0 0 1 0 0"),
+            ("nonnumeric", "1 0 0 0 1 0 0 0 1 0 no 0"),
+            ("nan", "1 0 0 0 1 0 0 0 1 0 NaN 0"),
+            ("positive infinity", "1 0 0 0 1 0 0 0 1 0 Infinity 0"),
+            ("negative infinity", "1 0 0 0 1 0 0 0 1 0 -Infinity 0"),
+            ("overflow", "1 0 0 0 1 0 0 0 1 0 1e309 0"),
+        ]
+        for label, transform in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / f"invalid-transform-{label}.3mf"
+                write_synthetic_3mf(
+                    source,
+                    root_model=synthetic_root_model(transform=transform),
+                )
+
+                with self.assertRaisesRegex(
+                    ObservationError, "object 2 component transform"
+                ):
+                    observe_3mf(source)
+
+    def test_rejects_non_finite_transformed_coordinates(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "overflowing-transform-result.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(
+                    transform="1e308 0 0 0 1 0 0 0 1 0 0 0"
+                ),
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError, "non-finite transformed coordinate"
+            ):
+                observe_3mf(source)
+
+    def test_counts_only_referenced_core_object_mesh_geometry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "object-identity.3mf"
+            detail = object_model_objects_xml(
+                [
+                    (1, [([(0, 0, 0), (2, 0, 0), (0, 3, 1)], [(0, 1, 2)])]),
+                    (
+                        99,
+                        [
+                            (
+                                [(-50, -50, -50), (50, 0, 0), (0, 50, 0)],
+                                [(0, 1, 2), (2, 1, 0)],
+                            )
+                        ],
+                    ),
+                ],
+                extension_noise=True,
+            )
+            write_synthetic_3mf(source, object_model_data=detail)
+
+            geometry = observe_3mf(source)["objects"][0]["geometry"]
+
+            self.assertEqual(geometry["vertex_count"], 3)
+            self.assertEqual(geometry["triangle_count"], 1)
+            self.assertEqual(geometry["bounds"]["min"], [0.0, 0.0, 0.0])
+            self.assertEqual(geometry["bounds"]["max"], [2.0, 3.0, 1.0])
+
+    def test_aggregates_multiple_meshes_and_components_from_one_member(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "component-aggregation.3mf"
+            detail = object_model_objects_xml(
+                [
+                    (
+                        1,
+                        [
+                            ([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 1, 2)]),
+                            ([(0, 0, 1)], []),
+                        ],
+                    ),
+                    (
+                        2,
+                        [
+                            (
+                                [(10, 0, 0), (11, 0, 0), (10, 1, 0)],
+                                [(0, 1, 2)],
+                            )
+                        ],
+                    ),
+                ]
+            )
+            root_model = synthetic_root_model(
+                component_references=[
+                    ("/3D/Objects/detail.model", "1", None),
+                    (
+                        "/3D/Objects/detail.model",
+                        "2",
+                        "1 0 0 0 1 0 0 0 1 0 0 2",
+                    ),
+                ]
+            )
+            write_synthetic_3mf(
+                source, root_model=root_model, object_model_data=detail
+            )
+
+            geometry = observe_3mf(source)["objects"][0]["geometry"]
+
+            self.assertEqual(geometry["vertex_count"], 7)
+            self.assertEqual(geometry["triangle_count"], 2)
+            self.assertEqual(geometry["bounds"]["min"], [0.0, 0.0, 0.0])
+            self.assertEqual(geometry["bounds"]["max"], [11.0, 1.0, 2.0])
+
+    def test_rejects_missing_referenced_object_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "missing-object-identity.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(referenced_object_id="7"),
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError,
+                "missing referenced object id 7 in object-model member",
+            ):
+                observe_3mf(source)
+
+    def test_rejects_malformed_referenced_object_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "malformed-object-identity.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(referenced_object_id="bad"),
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError, "invalid root object 2 component objectid: 'bad'"
+            ):
+                observe_3mf(source)
+
+    def test_rejects_noncanonical_referenced_object_model_paths(self) -> None:
+        invalid_paths = [
+            "",
+            "3D/Objects/detail.model",
+            "/3D/Objects/./detail.model",
+            "/3D/Objects/../detail.model",
+            "/3D\\Objects\\detail.model",
+            "/3D//Objects/detail.model",
+            "/3D/Objects/detail.model#fragment",
+            "/3D/Objects/detail.model?query=1",
+            "/3D/Objects/%2E/detail.model",
+            "/3D/Objects/%2e%2e/detail.model",
+            "/3D/Objects/d%65tail.model",
+            "/3D/Objects/detail%2Fmodel",
+            "/3D/Objects/detail%ZZ.model",
+            "/3D/Objects/",
+            "/Metadata/detail.model",
+        ]
+        for index, component_path in enumerate(invalid_paths):
+            with self.subTest(
+                path=component_path
+            ), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / f"invalid-reference-{index}.3mf"
+                write_synthetic_3mf(
+                    source,
+                    root_model=synthetic_root_model(component_path=component_path),
+                )
+
+                with self.assertRaisesRegex(
+                    ObservationError,
+                    "invalid referenced object-model path for object 2",
+                ):
+                    observe_3mf(source)
+
+    def test_accepts_canonical_percent_encoded_object_member_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "percent-encoded-part-name.3mf"
+            detail = object_model_xml([(0, 0, 0)], [])
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(
+                    component_path="/3D/Objects/detail%20part.model"
+                ),
+                object_model_members=[
+                    ("3D/Objects/detail%20part.model", detail)
+                ],
+            )
+
+            report = observe_3mf(source)
+
+            self.assertEqual(
+                report["objects"][0]["source_model_member"],
+                "3D/Objects/detail%20part.model",
+            )
+
+    def test_resolves_object_members_with_opc_case_insensitive_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "case-insensitive-part-name.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(
+                    component_path="/3d/objects/DETAIL.model"
+                ),
+            )
+
+            report = observe_3mf(source)
+
+            self.assertEqual(
+                report["objects"][0]["source_model_member"],
+                "3D/Objects/detail.model",
+            )
+
+    def test_rejects_canonical_duplicate_object_model_members(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "canonical-duplicate.3mf"
+            detail = object_model_xml([(0, 0, 0)], [])
+            write_synthetic_3mf(
+                source,
+                object_model_members=[
+                    ("3D/Objects/detail.model", detail),
+                    ("3d/objects/DETAIL.model", detail),
+                ],
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError, "ambiguous canonical object-model member"
+            ):
+                observe_3mf(source)
+
+    def test_rejects_noncanonical_object_model_zip_member_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "invalid-central-name.3mf"
+            detail = object_model_xml([(0, 0, 0)], [])
+            write_synthetic_3mf(
+                source,
+                object_model_members=[
+                    ("3D/Objects/../Objects/detail.model", detail)
+                ],
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError, "invalid object-model ZIP member name"
+            ):
+                observe_3mf(source)
 
     def test_rejects_missing_referenced_object_model_member(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -233,10 +674,11 @@ class AmpObserve3mfContractTests(unittest.TestCase):
     def test_rejects_root_object_referencing_multiple_model_members(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "multiple-object-models.3mf"
-            root_model = synthetic_root_model().replace(
-                b'<component objectid="1" path="/3D/Objects/detail.model"/>',
-                b'<component objectid="1" path="/3D/Objects/detail.model"/>'
-                b'<component objectid="2" path="/3D/Objects/other.model"/>',
+            root_model = synthetic_root_model(
+                component_references=[
+                    ("/3D/Objects/detail.model", "1", None),
+                    ("/3D/Objects/other.model", "2", None),
+                ]
             )
             write_synthetic_3mf(source, root_model=root_model)
 
