@@ -72,25 +72,33 @@ def synthetic_project_settings() -> dict[str, object]:
     }
 
 
-def write_synthetic_3mf(
-    path: Path,
-    *,
-    model_settings: bytes | None = None,
-    project_settings: dict[str, object] | None = None,
-) -> None:
-    root_model = b'''<?xml version="1.0" encoding="UTF-8"?>
+def synthetic_root_model(
+    *, object_id: str = "2", component_path: str = "/3D/Objects/detail.model"
+) -> bytes:
+    return f'''<?xml version="1.0" encoding="UTF-8"?>
 <model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" unit="millimeter">
   <metadata name="Title">Synthetic Project</metadata>
   <metadata name="Designer">AMP Tests</metadata>
   <metadata name="License">Test Fixture</metadata>
   <metadata name="Application">AMP Synthetic</metadata>
-  <resources><object id="2" type="model"><components><component objectid="1" path="/3D/Objects/detail.model"/></components></object></resources>
-  <build><item objectid="2"/></build>
-</model>'''
+  <resources><object id="{object_id}" type="model"><components><component objectid="1" path="{component_path}"/></components></object></resources>
+  <build><item objectid="{object_id}"/></build>
+</model>'''.encode("utf-8")
+
+
+def write_synthetic_3mf(
+    path: Path,
+    *,
+    model_settings: bytes | None = None,
+    project_settings: dict[str, object] | None = None,
+    root_model: bytes | None = None,
+) -> None:
     if model_settings is None:
         model_settings = synthetic_model_settings()
     if project_settings is None:
         project_settings = synthetic_project_settings()
+    if root_model is None:
+        root_model = synthetic_root_model()
     detail = object_model_xml(
         [(0, 0, 0), (10, 0, 0), (0, 5, 2)],
         [(0, 1, 2)],
@@ -150,7 +158,92 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertEqual(
                 report["objects"][0]["semantic_name_tokens"], ["detail", "glass"]
             )
+            self.assertEqual(
+                report["objects"][0]["source_model_member"],
+                "3D/Objects/detail.model",
+            )
+            geometry = report["objects"][0]["geometry"]
+            self.assertEqual(geometry["vertex_count"], 3)
+            self.assertEqual(geometry["triangle_count"], 1)
+            self.assertEqual(geometry["bounds"]["min"], [0.0, 0.0, 0.0])
+            self.assertEqual(geometry["bounds"]["max"], [10.0, 5.0, 2.0])
+            self.assertEqual(geometry["dimensions"], [10.0, 5.0, 2.0])
+            self.assertTrue(geometry["streamed"])
             self.assertEqual(report["warnings"], [])
+
+    def test_rejects_missing_referenced_object_model_member(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "missing-object-model.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(
+                    component_path="/3D/Objects/missing.model"
+                ),
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError, "missing referenced object-model member"
+            ):
+                observe_3mf(source)
+
+    def test_rejects_duplicate_referenced_object_model_member(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "duplicate-object-model.3mf"
+            write_synthetic_3mf(source)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                with zipfile.ZipFile(source, "a") as archive:
+                    archive.writestr(
+                        "3D/Objects/detail.model",
+                        object_model_xml([(1, 1, 1)], []),
+                    )
+
+            with self.assertRaisesRegex(
+                ObservationError, "duplicate referenced object-model member"
+            ):
+                observe_3mf(source)
+
+    def test_rejects_malformed_root_object_id_contextually(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "malformed-root-object-id.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(object_id="not-an-id"),
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError, "invalid root object id: 'not-an-id'"
+            ):
+                observe_3mf(source)
+
+    def test_rejects_empty_referenced_object_model_path_contextually(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "empty-object-model-path.3mf"
+            write_synthetic_3mf(
+                source,
+                root_model=synthetic_root_model(component_path="/"),
+            )
+
+            with self.assertRaisesRegex(
+                ObservationError,
+                "invalid referenced object-model path for object 2: '/'",
+            ):
+                observe_3mf(source)
+
+    def test_rejects_root_object_referencing_multiple_model_members(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "multiple-object-models.3mf"
+            root_model = synthetic_root_model().replace(
+                b'<component objectid="1" path="/3D/Objects/detail.model"/>',
+                b'<component objectid="1" path="/3D/Objects/detail.model"/>'
+                b'<component objectid="2" path="/3D/Objects/other.model"/>',
+            )
+            write_synthetic_3mf(source, root_model=root_model)
+
+            with self.assertRaisesRegex(
+                ObservationError, "object 2 references multiple model members"
+            ):
+                observe_3mf(source)
 
     def test_rejects_duplicate_object_id(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

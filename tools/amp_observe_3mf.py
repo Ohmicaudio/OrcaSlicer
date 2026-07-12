@@ -183,6 +183,89 @@ def parse_root_metadata(data: bytes) -> tuple[dict[str, Any], list[str]]:
     return project, warnings
 
 
+def parse_root_object_paths(data: bytes) -> dict[int, str]:
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise ObservationError(f"invalid {ROOT_MODEL}: {exc}") from exc
+    result: dict[int, str] = {}
+    seen_ids: set[int] = set()
+    for obj in root.iter():
+        if local_name(obj.tag) != "object":
+            continue
+        object_id = parse_required_int(
+            obj.attrib.get("id"),
+            "root object id",
+            minimum=1,
+            domain="positive",
+        )
+        if object_id in seen_ids:
+            raise ObservationError(f"duplicate root object id: {object_id}")
+        seen_ids.add(object_id)
+        paths: set[str] = set()
+        for component in obj.iter():
+            if local_name(component.tag) != "component":
+                continue
+            raw_path = component.attrib.get("path")
+            if raw_path is None:
+                continue
+            member_name = raw_path.lstrip("/")
+            if not member_name:
+                raise ObservationError(
+                    "invalid referenced object-model path for "
+                    f"object {object_id}: {raw_path!r}"
+                )
+            paths.add(member_name)
+        if len(paths) == 1:
+            result[object_id] = next(iter(paths))
+        elif len(paths) > 1:
+            raise ObservationError(
+                f"object {object_id} references multiple model members"
+            )
+    return result
+
+
+def stream_geometry(handle: BinaryIO, member_name: str) -> dict[str, Any]:
+    vertex_count = 0
+    triangle_count = 0
+    minimum = [float("inf"), float("inf"), float("inf")]
+    maximum = [float("-inf"), float("-inf"), float("-inf")]
+    try:
+        for _, element in ET.iterparse(handle, events=("end",)):
+            name = local_name(element.tag)
+            if name == "vertex":
+                values = [float(element.attrib[key]) for key in ("x", "y", "z")]
+                vertex_count += 1
+                minimum = [
+                    min(current, value)
+                    for current, value in zip(minimum, values)
+                ]
+                maximum = [
+                    max(current, value)
+                    for current, value in zip(maximum, values)
+                ]
+            elif name == "triangle":
+                triangle_count += 1
+            element.clear()
+    except (ET.ParseError, KeyError, ValueError) as exc:
+        raise ObservationError(
+            f"invalid object-model member {member_name}: {exc}"
+        ) from exc
+    if vertex_count == 0:
+        bounds = None
+        dimensions = None
+    else:
+        bounds = {"min": minimum, "max": maximum}
+        dimensions = [high - low for low, high in zip(minimum, maximum)]
+    return {
+        "vertex_count": vertex_count,
+        "triangle_count": triangle_count,
+        "bounds": bounds,
+        "dimensions": dimensions,
+        "streamed": True,
+    }
+
+
 def parse_project_settings(
     payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
@@ -353,6 +436,7 @@ def observe_3mf(source: Path) -> dict[str, Any]:
             validate_member_counts(infos, REQUIRED_MEMBERS)
             root_data = archive.read(ROOT_MODEL)
             root_project, root_warnings = parse_root_metadata(root_data)
+            root_object_paths = parse_root_object_paths(root_data)
             settings_project, physical_tools, materials, project_warnings = (
                 parse_project_settings(read_json_member(archive, PROJECT_SETTINGS))
             )
@@ -360,6 +444,22 @@ def observe_3mf(source: Path) -> dict[str, Any]:
             objects, plates, model_warnings = parse_model_settings(
                 archive.read(MODEL_SETTINGS), materials
             )
+            member_counts = Counter(archive.namelist())
+            for item in objects:
+                member_name = root_object_paths.get(item["object_id"])
+                item["source_model_member"] = member_name
+                if member_name is None:
+                    continue
+                if member_counts[member_name] == 0:
+                    raise ObservationError(
+                        f"missing referenced object-model member: {member_name}"
+                    )
+                if member_counts[member_name] > 1:
+                    raise ObservationError(
+                        f"duplicate referenced object-model member: {member_name}"
+                    )
+                with archive.open(member_name, "r") as handle:
+                    item["geometry"] = stream_geometry(handle, member_name)
             warnings = sorted(root_warnings + project_warnings + model_warnings)
             return {
                 "schema_version": SCHEMA_VERSION,
