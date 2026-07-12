@@ -37,6 +37,13 @@ CORE_VERTEX = f"{{{CORE_NAMESPACE}}}vertex"
 CORE_TRIANGLES = f"{{{CORE_NAMESPACE}}}triangles"
 CORE_TRIANGLE = f"{{{CORE_NAMESPACE}}}triangle"
 PRODUCTION_PATH = f"{{{PRODUCTION_NAMESPACE}}}path"
+ASCII_UNRESERVED = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+)
+ASCII_PCHAR = ASCII_UNRESERVED | frozenset("!$&'()*+,;=:@")
+ASCII_ORDINAL_LOWER = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
 
 
 class ObservationError(ValueError):
@@ -232,22 +239,30 @@ def parse_component_transform(
     )
 
 
-def has_noncanonical_percent_encoding(value: str) -> bool:
-    unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+def ascii_case_insensitive_key(value: str) -> str:
+    return value.translate(ASCII_ORDINAL_LOWER)
+
+
+def is_normalized_uri_path_segment(value: str) -> bool:
+    if not value or set(value) == {"."} or value.endswith("."):
+        return False
     index = 0
     while index < len(value):
-        if value[index] != "%":
+        character = value[index]
+        if character != "%":
+            if character not in ASCII_PCHAR:
+                return False
             index += 1
             continue
         if index + 2 >= len(value) or not re.fullmatch(
             r"[0-9A-Fa-f]{2}", value[index + 1 : index + 3]
         ):
-            return True
+            return False
         decoded = chr(int(value[index + 1 : index + 3], 16))
-        if decoded in unreserved or decoded in "/\\":
-            return True
+        if decoded in ASCII_UNRESERVED or decoded in "/\\":
+            return False
         index += 3
-    return False
+    return True
 
 
 def canonical_object_model_name(
@@ -258,22 +273,23 @@ def canonical_object_model_name(
         or "\\" in value
         or "?" in value
         or "#" in value
-        or has_noncanonical_percent_encoding(value)
         or (reference and (not value.startswith("/") or value.startswith("//")))
         or (not reference and value.startswith("/"))
     )
     member_name = value[1:] if reference and value.startswith("/") else value
     segments = member_name.split("/")
-    invalid = invalid or any(segment in {"", ".", ".."} for segment in segments)
+    invalid = invalid or any(
+        not is_normalized_uri_path_segment(segment) for segment in segments
+    )
     invalid = invalid or len(segments) < 3
     if not invalid:
         invalid = (
-            segments[0].casefold() != "3d"
-            or segments[1].casefold() != "objects"
+            ascii_case_insensitive_key(segments[0]) != "3d"
+            or ascii_case_insensitive_key(segments[1]) != "objects"
         )
     if invalid:
         raise ObservationError(f"invalid {context}: {value!r}")
-    return member_name, member_name.casefold()
+    return member_name, ascii_case_insensitive_key(member_name)
 
 
 def looks_like_object_model_member(name: str) -> bool:
@@ -284,8 +300,8 @@ def looks_like_object_model_member(name: str) -> bool:
     ]
     return (
         len(segments) >= 2
-        and segments[0].casefold() == "3d"
-        and segments[1].casefold() == "objects"
+        and ascii_case_insensitive_key(segments[0]) == "3d"
+        and ascii_case_insensitive_key(segments[1]) == "objects"
     )
 
 
@@ -413,6 +429,7 @@ def stream_geometry(
         references_by_object.setdefault(reference.object_id, []).append(reference)
     element_stack: list[ET.Element] = []
     object_ids_by_element: dict[int, int] = {}
+    mesh_vertex_counts: dict[int, int] = {}
     seen_object_ids: set[int] = set()
     found_object_ids: set[int] = set()
     try:
@@ -435,6 +452,8 @@ def stream_geometry(
                     object_ids_by_element[id(element)] = object_id
                     if object_id in references_by_object:
                         found_object_ids.add(object_id)
+                elif element.tag == CORE_MESH:
+                    mesh_vertex_counts[id(element)] = 0
                 continue
 
             is_vertex = (
@@ -454,33 +473,55 @@ def stream_geometry(
             if is_vertex or is_triangle:
                 object_id = object_ids_by_element[id(element_stack[-4])]
                 object_references = references_by_object.get(object_id, [])
-                if is_vertex and object_references:
-                    coordinates = tuple(
-                        parse_finite_float(
-                            element.attrib.get(axis),
+                mesh_id = id(element_stack[-3])
+                if is_vertex:
+                    mesh_vertex_counts[mesh_id] += 1
+                    if object_references:
+                        coordinates = tuple(
+                            parse_finite_float(
+                                element.attrib.get(axis),
+                                f"object-model member {member_name} object "
+                                f"{object_id} vertex {axis} coordinate",
+                            )
+                            for axis in ("x", "y", "z")
+                        )
+                        for reference in object_references:
+                            values = transform_vertex(
+                                coordinates, reference, member_name
+                            )
+                            minimum = [
+                                min(current, value)
+                                for current, value in zip(minimum, values)
+                            ]
+                            maximum = [
+                                max(current, value)
+                                for current, value in zip(maximum, values)
+                            ]
+                        vertex_count += len(object_references)
+                elif object_references:
+                    mesh_vertex_count = mesh_vertex_counts[mesh_id]
+                    for attribute in ("v1", "v2", "v3"):
+                        context = (
                             f"object-model member {member_name} object {object_id} "
-                            f"vertex {axis} coordinate",
+                            f"mesh triangle {attribute} index"
                         )
-                        for axis in ("x", "y", "z")
-                    )
-                    for reference in object_references:
-                        values = transform_vertex(
-                            coordinates, reference, member_name
+                        vertex_index = parse_required_int(
+                            element.attrib.get(attribute),
+                            context,
+                            minimum=0,
+                            domain="nonnegative",
                         )
-                        minimum = [
-                            min(current, value)
-                            for current, value in zip(minimum, values)
-                        ]
-                        maximum = [
-                            max(current, value)
-                            for current, value in zip(maximum, values)
-                        ]
-                    vertex_count += len(object_references)
-                elif is_triangle:
+                        if vertex_index >= mesh_vertex_count:
+                            raise ObservationError(
+                                f"{context} {vertex_index} out of range for "
+                                f"{mesh_vertex_count} vertices"
+                            )
                     triangle_count += len(object_references)
 
             if element.tag == CORE_OBJECT:
                 object_ids_by_element.pop(id(element), None)
+            elif element.tag == CORE_MESH:
+                mesh_vertex_counts.pop(id(element), None)
             element_stack.pop()
             if element_stack:
                 element_stack[-1].remove(element)

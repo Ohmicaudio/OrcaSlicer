@@ -480,6 +480,76 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertEqual(geometry["bounds"]["min"], [0.0, 0.0, 0.0])
             self.assertEqual(geometry["bounds"]["max"], [11.0, 1.0, 2.0])
 
+    def test_rejects_invalid_triangle_indices_contextually(self) -> None:
+        valid_detail = object_model_xml(
+            [(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 1, 2)]
+        )
+        cases = [
+            ("missing", b' v1="0"', b"", "v1"),
+            ("nonnumeric", b'v2="1"', b'v2="bad"', "v2"),
+            ("negative", b'v3="2"', b'v3="-1"', "v3"),
+            ("out of range", b'v1="0"', b'v1="3"', "v1"),
+        ]
+        for label, original, replacement, attribute in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / f"invalid-triangle-{label}.3mf"
+                write_synthetic_3mf(
+                    source,
+                    object_model_data=valid_detail.replace(
+                        original, replacement, 1
+                    ),
+                )
+
+                with self.assertRaisesRegex(
+                    ObservationError,
+                    rf"object-model member 3D/Objects/detail\.model object 1 "
+                    rf"mesh triangle {attribute} index",
+                ):
+                    observe_3mf(source)
+
+    def test_rejects_triangle_index_outside_its_current_mesh(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "per-mesh-triangle-index.3mf"
+            detail = object_model_objects_xml(
+                [
+                    (
+                        1,
+                        [
+                            ([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 1, 2)]),
+                            ([(2, 2, 2)], [(0, 0, 1)]),
+                        ],
+                    )
+                ]
+            )
+            write_synthetic_3mf(source, object_model_data=detail)
+
+            with self.assertRaisesRegex(
+                ObservationError,
+                "mesh triangle v3 index 1 out of range for 1 vertices",
+            ):
+                observe_3mf(source)
+
+    def test_validates_each_mesh_against_its_own_vertex_list(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "valid-multiple-mesh-topology.3mf"
+            detail = object_model_objects_xml(
+                [
+                    (
+                        1,
+                        [
+                            ([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 1, 2)]),
+                            ([(2, 2, 2)], [(0, 0, 0)]),
+                        ],
+                    )
+                ]
+            )
+            write_synthetic_3mf(source, object_model_data=detail)
+
+            geometry = observe_3mf(source)["objects"][0]["geometry"]
+
+            self.assertEqual(geometry["vertex_count"], 4)
+            self.assertEqual(geometry["triangle_count"], 2)
+
     def test_rejects_missing_referenced_object_identity(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "missing-object-identity.3mf"
@@ -522,6 +592,11 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             "/3D/Objects/d%65tail.model",
             "/3D/Objects/detail%2Fmodel",
             "/3D/Objects/detail%ZZ.model",
+            "/3D/Objects/.../detail.model",
+            "/3D/Objects/name./detail.model",
+            "/3D/Objects/raw space.model",
+            "/3D/Objects/caf\u00e9.model",
+            "/3D/Objects/unsupported[character].model",
             "/3D/Objects/",
             "/Metadata/detail.model",
         ]
@@ -540,6 +615,32 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                     "invalid referenced object-model path for object 2",
                 ):
                     observe_3mf(source)
+
+    def test_accepts_normalized_ascii_uri_object_member_names(self) -> None:
+        valid_names = [
+            "simple.model",
+            "A-Z_a-z.0~!$&'()*+,;=:@.model",
+            "detail%20part.model",
+            "nested/part-name.model",
+        ]
+        detail = object_model_xml([(0, 0, 0)], [])
+        for index, name in enumerate(valid_names):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / f"valid-part-name-{index}.3mf"
+                member_name = f"3D/Objects/{name}"
+                write_synthetic_3mf(
+                    source,
+                    root_model=synthetic_root_model(
+                        component_path=f"/{member_name}"
+                    ),
+                    object_model_members=[(member_name, detail)],
+                )
+
+                report = observe_3mf(source)
+
+                self.assertEqual(
+                    report["objects"][0]["source_model_member"], member_name
+                )
 
     def test_accepts_canonical_percent_encoded_object_member_name(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -579,7 +680,9 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                 "3D/Objects/detail.model",
             )
 
-    def test_rejects_canonical_duplicate_object_model_members(self) -> None:
+    def test_rejects_ascii_case_equivalent_duplicate_object_model_members(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "canonical-duplicate.3mf"
             detail = object_model_xml([(0, 0, 0)], [])
@@ -597,20 +700,25 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                 observe_3mf(source)
 
     def test_rejects_noncanonical_object_model_zip_member_names(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            source = Path(temp_dir) / "invalid-central-name.3mf"
-            detail = object_model_xml([(0, 0, 0)], [])
-            write_synthetic_3mf(
-                source,
-                object_model_members=[
-                    ("3D/Objects/../Objects/detail.model", detail)
-                ],
-            )
+        invalid_member_names = [
+            "3D/Objects/../Objects/detail.model",
+            "3D/Objects/control\x01.model",
+        ]
+        detail = object_model_xml([(0, 0, 0)], [])
+        for index, member_name in enumerate(invalid_member_names):
+            with self.subTest(
+                name=member_name
+            ), tempfile.TemporaryDirectory() as temp_dir:
+                source = Path(temp_dir) / f"invalid-central-name-{index}.3mf"
+                write_synthetic_3mf(
+                    source,
+                    object_model_members=[(member_name, detail)],
+                )
 
-            with self.assertRaisesRegex(
-                ObservationError, "invalid object-model ZIP member name"
-            ):
-                observe_3mf(source)
+                with self.assertRaisesRegex(
+                    ObservationError, "invalid object-model ZIP member name"
+                ):
+                    observe_3mf(source)
 
     def test_rejects_missing_referenced_object_model_member(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
