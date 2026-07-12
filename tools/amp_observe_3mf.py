@@ -780,3 +780,157 @@ def observe_3mf(source: Path) -> dict[str, Any]:
             }
     except (OSError, zipfile.BadZipFile) as exc:
         raise ObservationError(f"unreadable 3MF archive: {exc}") from exc
+
+
+def validate_report(report: dict[str, Any]) -> None:
+    required = {
+        "schema_version",
+        "source",
+        "project",
+        "physical_tools",
+        "materials",
+        "plates",
+        "objects",
+        "warnings",
+    }
+    missing = sorted(required - set(report))
+    if missing:
+        raise ObservationError(
+            "invalid observation report; missing: " + ", ".join(missing)
+        )
+
+
+def serialize_json(report: dict[str, Any]) -> str:
+    validate_report(report)
+    try:
+        return (
+            json.dumps(
+                report,
+                indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n"
+        )
+    except (TypeError, ValueError) as exc:
+        raise ObservationError(f"invalid observation report: {exc}") from exc
+
+
+def markdown_text(value: Any) -> str:
+    return (
+        str(value)
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\n", "<br>")
+        .replace("|", "\\|")
+        .replace("`", "&#96;")
+    )
+
+
+def serialize_markdown(report: dict[str, Any]) -> str:
+    validate_report(report)
+    source = report["source"]
+    nozzle_diameters = report["physical_tools"]["nozzle_diameters"]
+    nozzle_vector = ",".join(
+        "" if diameter is None else markdown_text(diameter)
+        for diameter in nozzle_diameters
+    )
+    lines = [
+        "# AMP 3MF Observation",
+        "",
+        f"- Source: `{markdown_text(source['file_name'])}`",
+        f"- SHA-256: `{markdown_text(source['sha256'])}`",
+        f"- ZIP members: {source['member_count']}",
+        f"- Plates: {len(report['plates'])}",
+        f"- Objects: {len(report['objects'])}",
+        f"- Configured nozzle vector: `{nozzle_vector}`",
+        "",
+        "## Objects",
+        "",
+        "| ID | Name | Plate | Material slot | Vertices | Triangles |",
+        "| ---: | --- | ---: | ---: | ---: | ---: |",
+    ]
+    for item in report["objects"]:
+        geometry = item["geometry"] or {}
+        lines.append(
+            f"| {item['object_id']} | {markdown_text(item['name'])} | "
+            f"{item['plate_id'] or ''} | {item['material_assignment'] or ''} | "
+            f"{geometry.get('vertex_count', '')} | "
+            f"{geometry.get('triangle_count', '')} |"
+        )
+    lines.extend(
+        [
+            "",
+            "Material/color assignments are not physical nozzle assignments or "
+            "AMP recommendations.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def atomic_write(path: Path, content: str) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            newline="\n",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(content)
+        os.replace(temp_path, path)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+    return path
+
+
+def write_reports(
+    report: dict[str, Any],
+    *,
+    json_path: Path | None,
+    markdown_path: Path | None,
+) -> None:
+    json_content = serialize_json(report) if json_path is not None else None
+    markdown_content = (
+        serialize_markdown(report) if markdown_path is not None else None
+    )
+    if json_path is not None and json_content is not None:
+        atomic_write(json_path, json_content)
+    if markdown_path is not None and markdown_content is not None:
+        atomic_write(markdown_path, markdown_content)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--3mf", required=True, type=Path, dest="source")
+    parser.add_argument("--out-json", type=Path)
+    parser.add_argument("--out-md", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        report = observe_3mf(args.source)
+        if args.out_json is None and args.out_md is None:
+            sys.stdout.write(serialize_json(report))
+        else:
+            write_reports(
+                report,
+                json_path=args.out_json,
+                markdown_path=args.out_md,
+            )
+    except ObservationError as exc:
+        print(f"AMP 3MF observation failed: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

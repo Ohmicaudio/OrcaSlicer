@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import tempfile
 import unittest
@@ -10,7 +11,14 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from tools.amp_observe_3mf import ObservationError, observe_3mf
+from tools.amp_observe_3mf import (
+    ObservationError,
+    main,
+    observe_3mf,
+    serialize_json,
+    serialize_markdown,
+    write_reports,
+)
 
 
 MODEL_SETTINGS = "Metadata/model_settings.config"
@@ -181,6 +189,138 @@ def write_synthetic_3mf(
 
 
 class AmpObserve3mfContractTests(unittest.TestCase):
+    def test_serialization_is_deterministic_and_contains_no_absolute_path(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+
+            first = serialize_json(report)
+            second = serialize_json(report)
+
+            self.assertEqual(first, second)
+            self.assertTrue(first.endswith("\n"))
+            self.assertNotIn(str(source.parent), first)
+            self.assertIn('"physical_nozzle_assignment": null', first)
+
+    def test_json_serialization_rejects_non_finite_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+            report["project"]["invalid_number"] = float("nan")
+
+            with self.assertRaises(ObservationError):
+                serialize_json(report)
+
+    def test_markdown_escapes_table_text_and_preserves_nozzle_slots(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+            report["source"]["file_name"] = "source\nname.3mf"
+            report["objects"][0]["name"] = "Glass|Detail\r\nSecond line.stl"
+            report["physical_tools"]["nozzle_diameters"] = ["0.4", None, "0.8"]
+
+            markdown = serialize_markdown(report)
+
+            self.assertIn("Source: `source<br>name.3mf`", markdown)
+            self.assertIn("Configured nozzle vector: `0.4,,0.8`", markdown)
+            self.assertIn("Glass\\|Detail<br>Second line.stl", markdown)
+            self.assertEqual(markdown, serialize_markdown(report))
+            self.assertTrue(markdown.endswith("\n"))
+
+    def test_writes_json_and_markdown_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            markdown_path = root / "report.md"
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+
+            write_reports(
+                report, json_path=json_path, markdown_path=markdown_path
+            )
+
+            self.assertEqual(
+                json_path.read_text(encoding="utf-8"), serialize_json(report)
+            )
+            self.assertEqual(
+                markdown_path.read_text(encoding="utf-8"),
+                serialize_markdown(report),
+            )
+            self.assertFalse(list(root.glob(".*.tmp")))
+
+    def test_failure_does_not_replace_existing_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            json_path = root / "report.json"
+            json_path.write_text("existing\n", encoding="utf-8")
+
+            with self.assertRaises(ObservationError):
+                write_reports(
+                    {"not": "a report"},
+                    json_path=json_path,
+                    markdown_path=None,
+                )
+
+            self.assertEqual(
+                json_path.read_text(encoding="utf-8"), "existing\n"
+            )
+
+    def test_failed_replace_cleans_temporary_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            json_path = root / "report.json"
+            json_path.write_text("existing\n", encoding="utf-8")
+            write_synthetic_3mf(source)
+            report = observe_3mf(source)
+
+            with mock.patch(
+                "tools.amp_observe_3mf.os.replace",
+                side_effect=OSError("replace failed"),
+            ):
+                with self.assertRaises(OSError):
+                    write_reports(
+                        report, json_path=json_path, markdown_path=None
+                    )
+
+            self.assertEqual(
+                json_path.read_text(encoding="utf-8"), "existing\n"
+            )
+            self.assertFalse(list(root.glob(".*.tmp")))
+
+    def test_cli_defaults_to_json_stdout_without_writing_a_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "synthetic.3mf"
+            write_synthetic_3mf(source)
+            before = sorted(item.name for item in root.iterdir())
+            stdout = io.StringIO()
+
+            with mock.patch("sys.stdout", stdout):
+                exit_code = main(["--3mf", str(source)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                json.loads(stdout.getvalue())["schema_version"], "0.1"
+            )
+            self.assertEqual(sorted(item.name for item in root.iterdir()), before)
+
+    def test_cli_reports_observation_errors_without_a_traceback(self) -> None:
+        stderr = io.StringIO()
+
+        with mock.patch("sys.stderr", stderr):
+            exit_code = main(["--3mf", "missing.3mf"])
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("AMP 3MF observation failed:", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
     def test_observes_source_contract_without_modifying_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "synthetic.3mf"
