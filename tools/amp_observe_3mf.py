@@ -743,13 +743,28 @@ def parse_model_settings(
                 if item["effective_material_assignment"] is not None
             }
         )
+        has_unresolved_part_assignments = any(
+            item["effective_material_assignment"] is None
+            for item in part_assignments
+        )
         assignment = object_assignment
         if part_assignments:
-            assignment = effective_slots[0] if len(effective_slots) == 1 else None
+            assignment = (
+                effective_slots[0]
+                if len(effective_slots) == 1
+                and not has_unresolved_part_assignments
+                else None
+            )
         name = metadata.get("name", f"object_{object_id}")
         tokens = sorted(set(re.findall(r"[a-z0-9]+", Path(name).stem.lower())))
         object_warnings = []
-        if len(effective_slots) > 1:
+        if has_unresolved_part_assignments and effective_slots:
+            object_warnings.append(
+                "known effective part material assignments: "
+                + ", ".join(str(slot) for slot in effective_slots)
+                + "; unresolved part assignments are present"
+            )
+        elif len(effective_slots) > 1:
             object_warnings.append(
                 "mixed effective part material assignments: "
                 + ", ".join(str(slot) for slot in effective_slots)
@@ -796,6 +811,7 @@ def parse_model_settings(
         )
     plates: list[dict[str, Any]] = []
     seen_plate_ids: set[int] = set()
+    explicit_instance_plates: dict[tuple[int, int], int] = {}
     for node in (child for child in root if local_name(child.tag) == "plate"):
         metadata = metadata_map(node)
         plate_id_value = (
@@ -860,6 +876,21 @@ def parse_model_settings(
                     f"{instance_id if instance_id is not None else 'null'}"
                 )
             seen_instance_identities.add(identity)
+            if instance_id is not None:
+                explicit_identity = (object_id, instance_id)
+                previous_plate_id = explicit_instance_plates.get(
+                    explicit_identity
+                )
+                if previous_plate_id is not None:
+                    first_plate_id, second_plate_id = sorted(
+                        (previous_plate_id, plate_id)
+                    )
+                    raise ObservationError(
+                        "duplicate explicit instance identity across plates: "
+                        f"object {object_id}, instance {instance_id} on plates "
+                        f"{first_plate_id} and {second_plate_id}"
+                    )
+                explicit_instance_plates[explicit_identity] = plate_id
             instances.append(
                 {"object_id": object_id, "instance_id": instance_id}
             )

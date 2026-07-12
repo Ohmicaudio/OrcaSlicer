@@ -2084,6 +2084,63 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                 ["mixed effective part material assignments: 1, 2"],
             )
 
+    def test_known_and_unresolved_parts_clear_object_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "known-and-unresolved-parts.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<metadata key="extruder" value=" 2 "/>',
+                b'<metadata key="extruder" value="0"/>',
+            ).replace(
+                b'<part id="1" subtype="normal_part"/>',
+                b'''<part id="2" subtype="normal_part"/>
+    <part id="1" subtype="normal_part"><metadata key="extruder" value="1"/></part>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(
+                [
+                    part["effective_material_assignment"]
+                    for part in observed["part_assignments"]
+                ],
+                [1, None],
+            )
+            self.assertIsNone(observed["material_assignment"])
+            self.assertIsNone(observed["resolved_material"])
+            self.assertEqual(
+                observed["warnings"],
+                [
+                    "known effective part material assignments: 1; unresolved part assignments are present"
+                ],
+            )
+
+    def test_all_unresolved_parts_keep_null_summary_without_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "all-unresolved-parts.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<metadata key="extruder" value=" 2 "/>',
+                b'<metadata key="extruder" value="0"/>',
+            ).replace(
+                b'<part id="1" subtype="normal_part"/>',
+                b'''<part id="2" subtype="normal_part"/>
+    <part id="1" subtype="normal_part"><metadata key="extruder" value="0"/></part>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(
+                [
+                    part["effective_material_assignment"]
+                    for part in observed["part_assignments"]
+                ],
+                [None, None],
+            )
+            self.assertIsNone(observed["material_assignment"])
+            self.assertIsNone(observed["resolved_material"])
+            self.assertEqual(observed["warnings"], [])
+
     def test_object_assignment_is_preserved_when_object_has_no_parts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "no-parts.3mf"
@@ -2289,6 +2346,65 @@ class AmpObserve3mfContractTests(unittest.TestCase):
                 "duplicate instance identity on plate 1: object 2, instance 0",
             ):
                 observe_3mf(source)
+
+    def test_rejects_explicit_instance_identity_repeated_across_plates(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "cross-plate-duplicate-instance.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<model_instance><metadata key="object_id" value="2"/></model_instance>',
+                b'''<model_instance><metadata key="object_id" value="2"/><metadata key="instance_id" value="0"/></model_instance>''',
+            ).replace(
+                b"</config>",
+                b'''<plate><metadata key="plater_id" value="2"/><metadata key="plater_name" value="Other"/><model_instance><metadata key="instance_id" value="0"/><metadata key="object_id" value="2"/></model_instance></plate></config>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            with self.assertRaisesRegex(
+                ObservationError,
+                "duplicate explicit instance identity across plates: object 2, instance 0 on plates 1 and 2",
+            ):
+                observe_3mf(source)
+
+    def test_allows_cross_plate_object_with_distinct_explicit_instance_ids(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "cross-plate-distinct-instances.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b'<model_instance><metadata key="object_id" value="2"/></model_instance>',
+                b'''<model_instance><metadata key="object_id" value="2"/><metadata key="instance_id" value="0"/></model_instance>''',
+            ).replace(
+                b"</config>",
+                b'''<plate><metadata key="plater_id" value="2"/><metadata key="plater_name" value="Other"/><model_instance><metadata key="instance_id" value="1"/><metadata key="object_id" value="2"/></model_instance></plate></config>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(observed["plate_ids"], [1, 2])
+            self.assertEqual(
+                [instance["instance_id"] for instance in observed["instances"]],
+                [0, 1],
+            )
+
+    def test_allows_cross_plate_instances_without_explicit_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "cross-plate-implicit-instances.3mf"
+            model_settings = synthetic_model_settings().replace(
+                b"</config>",
+                b'''<plate><metadata key="plater_id" value="2"/><metadata key="plater_name" value="Other"/><model_instance><metadata key="object_id" value="2"/></model_instance></plate></config>''',
+            )
+            write_synthetic_3mf(source, model_settings=model_settings)
+
+            observed = observe_3mf(source)["objects"][0]
+
+            self.assertEqual(observed["plate_ids"], [1, 2])
+            self.assertEqual(
+                [instance["instance_id"] for instance in observed["instances"]],
+                [None, None],
+            )
 
     def test_rejects_malformed_and_negative_instance_ids(self) -> None:
         base = synthetic_model_settings().replace(
