@@ -12,6 +12,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -36,17 +37,26 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def validate_member_counts(
+    infos: list[zipfile.ZipInfo], required_members: set[str]
+) -> None:
+    counts = Counter(item.filename for item in infos)
+    missing = sorted(name for name in required_members if counts[name] == 0)
+    if missing:
+        raise ObservationError("missing required member(s): " + ", ".join(missing))
+    duplicates = sorted(name for name in required_members if counts[name] > 1)
+    if duplicates:
+        raise ObservationError(
+            "duplicate required member(s): " + ", ".join(duplicates)
+        )
+
+
 def observe_3mf(source: Path) -> dict[str, Any]:
     source = Path(source)
     try:
         with zipfile.ZipFile(source, "r") as archive:
             infos = archive.infolist()
-            names = {item.filename for item in infos}
-            missing = sorted(REQUIRED_MEMBERS - names)
-            if missing:
-                raise ObservationError(
-                    "missing required member(s): " + ", ".join(missing)
-                )
+            validate_member_counts(infos, REQUIRED_MEMBERS)
             return {
                 "schema_version": SCHEMA_VERSION,
                 "source": {

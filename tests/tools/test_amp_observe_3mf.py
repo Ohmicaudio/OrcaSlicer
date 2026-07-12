@@ -4,6 +4,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+import warnings
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -88,7 +89,7 @@ def write_synthetic_3mf(path: Path) -> None:
 
 
 class AmpObserve3mfContractTests(unittest.TestCase):
-    def test_observes_source_contract_without_assigning_a_nozzle(self) -> None:
+    def test_observes_source_contract_without_modifying_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "synthetic.3mf"
             write_synthetic_3mf(source)
@@ -99,13 +100,21 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertEqual(report["schema_version"], "0.1")
             self.assertEqual(report["source"]["sha256"], before)
             self.assertEqual(report["source"]["member_count"], 5)
+            self.assertEqual(sha256(source), before)
+
+    def test_task_2_contract_observes_metadata_without_assigning_a_nozzle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "synthetic.3mf"
+            write_synthetic_3mf(source)
+
+            report = observe_3mf(source)
+
             self.assertEqual(
                 report["physical_tools"]["nozzle_diameters"], ["0.4", "0.4"]
             )
             self.assertEqual(report["objects"][0]["material_assignment"], 2)
             self.assertIsNone(report["objects"][0]["physical_nozzle_assignment"])
             self.assertIsNone(report["objects"][0]["recommended_tool_class"])
-            self.assertEqual(sha256(source), before)
 
     def test_rejects_missing_required_member(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -113,4 +122,17 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             with zipfile.ZipFile(source, "w") as archive:
                 archive.writestr(ROOT_MODEL, b"<model/>")
             with self.assertRaisesRegex(ObservationError, "missing required member"):
+                observe_3mf(source)
+
+    def test_rejects_duplicate_required_member(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "duplicate.3mf"
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                with zipfile.ZipFile(source, "w") as archive:
+                    archive.writestr(ROOT_MODEL, b"<model/>")
+                    archive.writestr(ROOT_MODEL, b"<model/>")
+                    archive.writestr(MODEL_SETTINGS, b"<config/>")
+                    archive.writestr(PROJECT_SETTINGS, b"{}")
+            with self.assertRaisesRegex(ObservationError, "duplicate required member"):
                 observe_3mf(source)
