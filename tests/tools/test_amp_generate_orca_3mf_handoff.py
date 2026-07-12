@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from tools.amp_orca_3mf_handoff import generate_handoff
+from tools.amp_orca_3mf_handoff import HandoffError, generate_handoff
 
 
 REGIONS = [
@@ -65,15 +65,28 @@ def model_settings_xml(regions: list[tuple[str, str]] = REGIONS) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def write_template(path: Path) -> None:
-    project_settings = {"nozzle_diameter": ["0.4"] * 5, "untouched": "value"}
+def write_template(
+    path: Path,
+    *,
+    regions: list[tuple[str, str]] = REGIONS,
+    tool_slots: int = 5,
+    model_settings: bytes | None = None,
+    project_settings: bytes | None = None,
+) -> None:
+    project_payload = {"nozzle_diameter": ["0.4"] * tool_slots, "untouched": "value"}
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", b"<Types/>")
         archive.writestr("3D/3dmodel.model", b"<model/>")
         archive.writestr("3D/Objects/body.model", b"unchanged mesh")
-        archive.writestr("Metadata/model_settings.config", model_settings_xml())
         archive.writestr(
-            "Metadata/project_settings.config", json.dumps(project_settings).encode()
+            "Metadata/model_settings.config",
+            model_settings if model_settings is not None else model_settings_xml(regions),
+        )
+        archive.writestr(
+            "Metadata/project_settings.config",
+            project_settings
+            if project_settings is not None
+            else json.dumps(project_payload).encode(),
         )
 
 
@@ -186,6 +199,84 @@ class AmpOrca3mfHandoffTests(unittest.TestCase):
             generate_handoff(template, packet, second)
 
             self.assertEqual(sha256(first), sha256(second))
+
+
+class AmpOrca3mfHandoffErrorTests(unittest.TestCase):
+    def make_paths(self, root: Path) -> tuple[Path, Path, Path]:
+        template = root / "template.3mf"
+        packet = root / "packet"
+        output = root / "handoff.3mf"
+        write_packet(packet)
+        return template, packet, output
+
+    def test_rejects_missing_planned_region_without_replacing_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template, packet, output = self.make_paths(Path(temp_dir))
+            write_template(template, regions=REGIONS[:-1])
+            output.write_bytes(b"existing output")
+
+            with self.assertRaisesRegex(HandoffError, "missing planned region"):
+                generate_handoff(template, packet, output)
+
+            self.assertEqual(output.read_bytes(), b"existing output")
+
+    def test_rejects_insufficient_tool_slots(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template, packet, output = self.make_paths(Path(temp_dir))
+            write_template(template, tool_slots=2)
+
+            with self.assertRaisesRegex(HandoffError, "tool slots"):
+                generate_handoff(template, packet, output)
+
+            self.assertFalse(output.exists())
+
+    def test_rejects_duplicate_template_region_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template, packet, output = self.make_paths(Path(temp_dir))
+            duplicate_regions = REGIONS + [("micro_detail_zone", "0.2")]
+            write_template(template, regions=duplicate_regions)
+
+            with self.assertRaisesRegex(HandoffError, "duplicate template region"):
+                generate_handoff(template, packet, output)
+
+    def test_wraps_malformed_xml_with_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template, packet, output = self.make_paths(Path(temp_dir))
+            write_template(template, model_settings=b"<config><broken>")
+
+            with self.assertRaisesRegex(HandoffError, "model_settings.config"):
+                generate_handoff(template, packet, output)
+
+    def test_wraps_malformed_project_json_with_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template, packet, output = self.make_paths(Path(temp_dir))
+            write_template(template, project_settings=b"{not json")
+
+            with self.assertRaisesRegex(HandoffError, "project_settings.config"):
+                generate_handoff(template, packet, output)
+
+    def test_rejects_missing_process_queue_with_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            template = root / "template.3mf"
+            packet = root / "packet"
+            output = root / "handoff.3mf"
+            packet.mkdir()
+            write_template(template)
+
+            with self.assertRaisesRegex(HandoffError, "process_queue.json"):
+                generate_handoff(template, packet, output)
+
+    def test_rejects_in_place_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            template = root / "template.3mf"
+            packet = root / "packet"
+            write_template(template)
+            write_packet(packet)
+
+            with self.assertRaisesRegex(HandoffError, "must be different"):
+                generate_handoff(template, packet, template)
 
 
 if __name__ == "__main__":

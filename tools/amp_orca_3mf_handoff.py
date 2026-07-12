@@ -61,23 +61,42 @@ def normalize_region_name(value: str) -> str:
 
 def load_plan(packet_dir: Path) -> HandoffPlan:
     queue_path = packet_dir / "process_queue.json"
-    payload = json.loads(queue_path.read_text(encoding="utf-8"))
+    if not queue_path.is_file():
+        raise HandoffError(f"missing AMP packet file: {queue_path}")
+    try:
+        payload = json.loads(queue_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise HandoffError(f"invalid process_queue.json: {exc}") from exc
     queue = payload.get("process_queue", [])
-    tool_classes = sorted(
-        {str(item["recommended_tool_class"]) for item in queue}, key=float
-    )
+    if not isinstance(queue, list) or not queue:
+        raise HandoffError("process_queue.json contains no process_queue entries")
+    try:
+        tool_classes = sorted(
+            {str(item["recommended_tool_class"]) for item in queue}, key=float
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HandoffError(f"invalid process_queue.json tool class: {exc}") from exc
     tool_slots = {tool_class: index + 1 for index, tool_class in enumerate(tool_classes)}
-    assignments = {
-        normalize_region_name(str(item["region_name"])): tool_slots[
-            str(item["recommended_tool_class"])
-        ]
-        for item in queue
-    }
+    assignments: dict[str, int] = {}
+    for item in queue:
+        try:
+            region_name = normalize_region_name(str(item["region_name"]))
+            tool_class = str(item["recommended_tool_class"])
+        except (KeyError, TypeError) as exc:
+            raise HandoffError(f"invalid process_queue.json entry: {exc}") from exc
+        if not region_name:
+            raise HandoffError("process_queue.json contains an empty region_name")
+        if region_name in assignments:
+            raise HandoffError(f"duplicate planned region: {region_name}")
+        assignments[region_name] = tool_slots[tool_class]
     return HandoffPlan(assignments=assignments, nozzle_diameters=tool_classes)
 
 
 def patch_model_settings(data: bytes, assignments: dict[str, int]) -> bytes:
-    root = ET.fromstring(data)
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise HandoffError(f"invalid {MODEL_SETTINGS}: {exc}") from exc
     matched: set[str] = set()
     for obj in root.findall("object"):
         metadata = {
@@ -91,6 +110,8 @@ def patch_model_settings(data: bytes, assignments: dict[str, int]) -> bytes:
         region_name = normalize_region_name(name_item.attrib.get("value", ""))
         if region_name not in assignments:
             continue
+        if region_name in matched:
+            raise HandoffError(f"duplicate template region: {region_name}")
         extruder_item = metadata.get("extruder")
         if extruder_item is None:
             extruder_item = ET.SubElement(obj, "metadata", {"key": "extruder"})
@@ -106,7 +127,10 @@ def patch_model_settings(data: bytes, assignments: dict[str, int]) -> bytes:
 
 
 def patch_project_settings(data: bytes, nozzles: list[str]) -> bytes:
-    payload = json.loads(data.decode("utf-8"))
+    try:
+        payload = json.loads(data.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise HandoffError(f"invalid {PROJECT_SETTINGS}: {exc}") from exc
     existing = payload.get("nozzle_diameter")
     if not isinstance(existing, list) or len(existing) < len(nozzles):
         available = len(existing) if isinstance(existing, list) else 0
