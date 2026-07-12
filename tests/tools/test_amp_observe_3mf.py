@@ -48,7 +48,7 @@ def object_model_xml(
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def write_synthetic_3mf(path: Path) -> None:
+def write_synthetic_3mf(path: Path, *, duplicate_object_id: bool = False) -> None:
     root_model = b'''<?xml version="1.0" encoding="UTF-8"?>
 <model xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" unit="millimeter">
   <metadata name="Title">Synthetic Project</metadata>
@@ -67,6 +67,11 @@ def write_synthetic_3mf(path: Path) -> None:
   </object>
   <plate><metadata key="index" value="1"/><metadata key="name" value="Detail Plate"/><model_instance><metadata key="object_id" value="2"/></model_instance></plate>
 </config>'''
+    if duplicate_object_id:
+        model_settings = model_settings.replace(
+            b"</config>",
+            b'<object id="2"><metadata key="name" value="Duplicate"/></object></config>',
+        )
     project_settings = {
         "nozzle_diameter": ["0.4", "0.4"],
         "filament_settings_id": ["Basic PLA", "Transparent PLA"],
@@ -112,9 +117,37 @@ class AmpObserve3mfContractTests(unittest.TestCase):
             self.assertEqual(
                 report["physical_tools"]["nozzle_diameters"], ["0.4", "0.4"]
             )
+            self.assertEqual(report["project"]["printer_preset"], "Synthetic Printer")
+            self.assertEqual(report["project"]["process_preset"], "0.20mm Synthetic")
+            self.assertEqual(report["project"]["layer_height"], "0.2")
+            self.assertEqual(report["project"]["title"], "Synthetic Project")
+            self.assertEqual(report["project"]["designer"], "AMP Tests")
+            self.assertEqual(report["project"]["license"], "Test Fixture")
+            self.assertEqual(report["project"]["source_application"], "AMP Synthetic")
+            self.assertEqual(report["materials"][1]["slot"], 2)
+            self.assertEqual(report["materials"][1]["profile"], "Transparent PLA")
+            self.assertEqual(report["materials"][1]["color"], "#EEEEFF")
+            self.assertEqual(report["plates"][0]["plate_id"], 1)
+            self.assertEqual(report["plates"][0]["object_ids"], [2])
+            self.assertEqual(report["objects"][0]["object_id"], 2)
+            self.assertEqual(report["objects"][0]["name"], "Glass Detail.stl")
+            self.assertEqual(report["objects"][0]["plate_id"], 1)
             self.assertEqual(report["objects"][0]["material_assignment"], 2)
+            self.assertEqual(report["objects"][0]["resolved_material"]["slot"], 2)
             self.assertIsNone(report["objects"][0]["physical_nozzle_assignment"])
             self.assertIsNone(report["objects"][0]["recommended_tool_class"])
+            self.assertEqual(
+                report["objects"][0]["semantic_name_tokens"], ["detail", "glass"]
+            )
+            self.assertEqual(report["warnings"], [])
+
+    def test_rejects_duplicate_object_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "duplicate-object.3mf"
+            write_synthetic_3mf(source, duplicate_object_id=True)
+
+            with self.assertRaisesRegex(ObservationError, "duplicate object id: 2"):
+                observe_3mf(source)
 
     def test_rejects_missing_required_member(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
