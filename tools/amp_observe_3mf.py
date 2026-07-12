@@ -73,6 +73,25 @@ def metadata_map(node: ET.Element) -> dict[str, str]:
     }
 
 
+def parse_required_int(value: str | None, context: str) -> int:
+    if value is None:
+        raise ObservationError(f"missing {context}")
+    try:
+        return int(value.strip())
+    except ValueError as exc:
+        raise ObservationError(f"invalid {context}: {value!r}") from exc
+
+
+def read_list_setting(
+    payload: dict[str, Any], key: str, warnings: list[str]
+) -> list[Any]:
+    values = payload.get(key, [])
+    if not isinstance(values, list):
+        warnings.append(f"project {key} is not a list")
+        return []
+    return values
+
+
 def parse_root_metadata(data: bytes) -> tuple[dict[str, Any], list[str]]:
     try:
         root = ET.fromstring(data)
@@ -101,16 +120,16 @@ def parse_project_settings(
     payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
     warnings: list[str] = []
-    nozzles = payload.get("nozzle_diameter", [])
-    if not isinstance(nozzles, list):
-        warnings.append("project nozzle_diameter is not a list")
-        nozzles = []
-    elif not nozzles:
+    nozzles = read_list_setting(payload, "nozzle_diameter", warnings)
+    if not nozzles and isinstance(payload.get("nozzle_diameter", []), list):
         warnings.append("project nozzle_diameter is empty")
-    profiles = payload.get("filament_settings_id", [])
-    colors = payload.get("filament_colour", [])
-    profiles = profiles if isinstance(profiles, list) else []
-    colors = colors if isinstance(colors, list) else []
+    profiles = read_list_setting(payload, "filament_settings_id", warnings)
+    colors = read_list_setting(payload, "filament_colour", warnings)
+    if len(profiles) != len(colors):
+        warnings.append(
+            "project material profile/color length mismatch: "
+            f"{len(profiles)} profiles, {len(colors)} colors"
+        )
     count = max(len(profiles), len(colors))
     materials = [
         {
@@ -146,16 +165,16 @@ def parse_model_settings(
     for node in root:
         if local_name(node.tag) != "object":
             continue
-        object_id = int(node.attrib["id"])
+        object_id = parse_required_int(node.attrib.get("id"), "object id")
         if object_id in seen_ids:
             raise ObservationError(f"duplicate object id: {object_id}")
         seen_ids.add(object_id)
         metadata = metadata_map(node)
-        assignment = (
-            int(metadata["extruder"])
-            if metadata.get("extruder", "").isdigit()
-            else None
-        )
+        assignment = None
+        if "extruder" in metadata:
+            assignment = parse_required_int(
+                metadata["extruder"], f"object {object_id} extruder"
+            )
         name = metadata.get("name", f"object_{object_id}")
         tokens = sorted(set(re.findall(r"[a-z0-9]+", Path(name).stem.lower())))
         object_warnings = []
@@ -183,28 +202,52 @@ def parse_model_settings(
             }
         )
     plates: list[dict[str, Any]] = []
-    for index, node in enumerate(
-        (child for child in root if local_name(child.tag) == "plate"), start=1
-    ):
+    seen_plate_ids: set[int] = set()
+    for node in (child for child in root if local_name(child.tag) == "plate"):
         metadata = metadata_map(node)
-        plate_id = int(metadata.get("index", index))
+        plate_id_value = (
+            metadata["plater_id"]
+            if "plater_id" in metadata
+            else metadata.get("index")
+        )
+        plate_id = parse_required_int(plate_id_value, "plate id")
+        if plate_id in seen_plate_ids:
+            raise ObservationError(f"duplicate plate id: {plate_id}")
+        seen_plate_ids.add(plate_id)
         object_ids = sorted(
-            int(item.attrib["value"])
-            for instance in node.iter()
-            for item in instance
+            parse_required_int(item.attrib.get("value"), f"plate {plate_id} object id")
+            for item in node.iter()
             if local_name(item.tag) == "metadata"
             and item.attrib.get("key") == "object_id"
+        )
+        plate_name = (
+            metadata["plater_name"]
+            if "plater_name" in metadata
+            else metadata.get("name")
         )
         plates.append(
             {
                 "plate_id": plate_id,
-                "name": metadata.get("name"),
+                "name": plate_name,
                 "object_ids": object_ids,
             }
         )
-    plate_by_object = {
-        object_id: plate for plate in plates for object_id in plate["object_ids"]
-    }
+    object_by_id = {item["object_id"]: item for item in objects}
+    plate_by_object: dict[int, dict[str, Any]] = {}
+    for plate in plates:
+        for object_id in plate["object_ids"]:
+            if object_id not in object_by_id:
+                raise ObservationError(
+                    f"plate {plate['plate_id']} references unknown object id: {object_id}"
+                )
+            previous = plate_by_object.get(object_id)
+            if previous is not None and previous["plate_id"] != plate["plate_id"]:
+                plate_ids = sorted((previous["plate_id"], plate["plate_id"]))
+                raise ObservationError(
+                    f"ambiguous plate membership for object id {object_id}: "
+                    f"{plate_ids[0]}, {plate_ids[1]}"
+                )
+            plate_by_object[object_id] = plate
     for item in objects:
         plate = plate_by_object.get(item["object_id"])
         if plate:
