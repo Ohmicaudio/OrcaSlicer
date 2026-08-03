@@ -45,11 +45,39 @@ bool should_cancel(const std::function<bool()> &callback)
     return callback && callback();
 }
 
+bool is_canceled_at_interval(const std::function<bool()> &callback, size_t index)
+{
+    constexpr size_t cancellation_poll_interval = 4096;
+    return index % cancellation_poll_interval == 0 && should_cancel(callback);
+}
+
 SurfaceFeatureField canceled_field()
 {
     SurfaceFeatureField field;
     field.status = SurfaceFeatureAnalysisStatus::Canceled;
     return field;
+}
+
+bool smooth_scores(
+    std::vector<float> &scores,
+    const std::vector<std::vector<size_t>> &neighbors,
+    unsigned passes,
+    const std::function<bool()> &is_canceled)
+{
+    std::vector<float> smoothed(scores.size());
+    for (unsigned pass = 0; pass < passes; ++pass) {
+        for (size_t triangle_index = 0; triangle_index < scores.size(); ++triangle_index) {
+            if (is_canceled_at_interval(is_canceled, triangle_index))
+                return false;
+
+            float total = scores[triangle_index];
+            for (size_t neighbor : neighbors[triangle_index])
+                total += scores[neighbor];
+            smoothed[triangle_index] = total / float(neighbors[triangle_index].size() + 1);
+        }
+        scores.swap(smoothed);
+    }
+    return !should_cancel(is_canceled);
 }
 
 } // namespace
@@ -71,7 +99,7 @@ bool SurfaceFeatureField::operator==(const SurfaceFeatureField &rhs) const
 
 SurfaceFeatureField analyze_surface_features(
     const indexed_triangle_set &mesh,
-    const SurfaceFeatureAnalysisOptions &,
+    const SurfaceFeatureAnalysisOptions &options,
     const std::function<bool()> &is_canceled)
 {
     if (should_cancel(is_canceled))
@@ -79,7 +107,7 @@ SurfaceFeatureField analyze_surface_features(
 
     const size_t triangle_count = mesh.indices.size();
     for (size_t triangle_index = 0; triangle_index < triangle_count; ++triangle_index) {
-        if (should_cancel(is_canceled))
+        if (is_canceled_at_interval(is_canceled, triangle_index))
             return canceled_field();
 
         const stl_triangle_vertex_indices &triangle = mesh.indices[triangle_index];
@@ -103,7 +131,7 @@ SurfaceFeatureField analyze_surface_features(
     std::vector<EdgeRecord> edge_records;
     edge_records.reserve(triangle_count * 3);
     for (size_t triangle_index = 0; triangle_index < triangle_count; ++triangle_index) {
-        if (should_cancel(is_canceled))
+        if (is_canceled_at_interval(is_canceled, triangle_index))
             return canceled_field();
 
         const stl_triangle_vertex_indices &triangle = mesh.indices[triangle_index];
@@ -141,8 +169,10 @@ SurfaceFeatureField analyze_surface_features(
         return canceled_field();
     }
 
+    float total_valid_edge_length = 0.0f;
+    size_t valid_edge_count = 0;
     for (size_t begin = 0; begin < edge_records.size();) {
-        if (should_cancel(is_canceled))
+        if (is_canceled_at_interval(is_canceled, begin))
             return canceled_field();
 
         size_t end = begin + 1;
@@ -165,6 +195,11 @@ SurfaceFeatureField analyze_surface_features(
 
             if (field.triangle_areas_mm2[first_triangle] > 0.0f && field.triangle_areas_mm2[second_triangle] > 0.0f) {
                 const Vec3f edge_direction = (mesh.vertices[first_use.edge.second] - mesh.vertices[first_use.edge.first]).normalized();
+                const float edge_length = (mesh.vertices[first_use.edge.second] - mesh.vertices[first_use.edge.first]).norm();
+                if (edge_length > 0.0f) {
+                    total_valid_edge_length += edge_length;
+                    ++valid_edge_count;
+                }
                 const float signed_sine = edge_direction.dot(face_normals[first_triangle].cross(face_normals[second_triangle]));
                 const float cosine = face_normals[first_triangle].dot(face_normals[second_triangle]);
                 const float signed_bend = std::atan2(signed_sine, cosine);
@@ -186,14 +221,31 @@ SurfaceFeatureField analyze_surface_features(
         begin = end;
     }
 
-    for (std::vector<size_t> &neighbors : field.triangle_neighbors)
+    for (size_t triangle_index = 0; triangle_index < field.triangle_neighbors.size(); ++triangle_index) {
+        if (is_canceled_at_interval(is_canceled, triangle_index))
+            return canceled_field();
+        std::vector<size_t> &neighbors = field.triangle_neighbors[triangle_index];
         std::sort(neighbors.begin(), neighbors.end());
+        neighbors.erase(std::unique(neighbors.begin(), neighbors.end()), neighbors.end());
+    }
 
     std::sort(field.warnings.begin(), field.warnings.end(), [](const SurfaceFeatureWarning &lhs, const SurfaceFeatureWarning &rhs) {
         return lhs.triangle_index != rhs.triangle_index
             ? lhs.triangle_index < rhs.triangle_index
             : lhs.code < rhs.code;
     });
+
+    const float mean_edge_mm = valid_edge_count == 0 ? 0.0f : total_valid_edge_length / float(valid_edge_count);
+    const float requested_radius_mm = std::max(0.0f, options.analysis_radius_mm);
+    const unsigned passes = std::min(
+        unsigned(std::ceil(requested_radius_mm / std::max(mean_edge_mm, 0.001f))),
+        options.smoothing_pass_limit);
+    if (!smooth_scores(field.valley_scores, field.triangle_neighbors, passes, is_canceled)
+        || !smooth_scores(field.ridge_scores, field.triangle_neighbors, passes, is_canceled))
+        return canceled_field();
+
+    if (should_cancel(is_canceled))
+        return canceled_field();
 
     return field;
 }
@@ -202,14 +254,39 @@ std::vector<size_t> select_surface_feature_triangles(
     const SurfaceFeatureField &field,
     SurfaceFeatureMode mode,
     float threshold,
-    float)
+    float min_patch_area_mm2)
 {
     const std::vector<float> &scores = mode == SurfaceFeatureMode::Valleys ? field.valley_scores : field.ridge_scores;
+    if (field.status != SurfaceFeatureAnalysisStatus::Complete
+        || field.triangle_areas_mm2.size() != scores.size()
+        || field.triangle_neighbors.size() != scores.size())
+        return {};
+
+    const float minimum_area = std::max(0.0f, min_patch_area_mm2);
+    std::vector<bool> visited(scores.size(), false);
     std::vector<size_t> selected;
     for (size_t triangle_index = 0; triangle_index < scores.size(); ++triangle_index) {
-        if (scores[triangle_index] >= threshold)
-            selected.push_back(triangle_index);
+        if (visited[triangle_index] || scores[triangle_index] < threshold)
+            continue;
+
+        std::vector<size_t> component { triangle_index };
+        visited[triangle_index] = true;
+        float component_area = 0.0f;
+        for (size_t component_index = 0; component_index < component.size(); ++component_index) {
+            const size_t current = component[component_index];
+            component_area += field.triangle_areas_mm2[current];
+            for (size_t neighbor : field.triangle_neighbors[current]) {
+                if (neighbor < scores.size() && !visited[neighbor] && scores[neighbor] >= threshold) {
+                    visited[neighbor] = true;
+                    component.push_back(neighbor);
+                }
+            }
+        }
+
+        if (component_area >= minimum_area)
+            selected.insert(selected.end(), component.begin(), component.end());
     }
+    std::sort(selected.begin(), selected.end());
     return selected;
 }
 

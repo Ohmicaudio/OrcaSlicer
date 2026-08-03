@@ -70,6 +70,24 @@ indexed_triangle_set make_v_ridge()
     return make_v_crease(true);
 }
 
+indexed_triangle_set make_feature_strip()
+{
+    indexed_triangle_set mesh;
+    mesh.vertices = {
+        Vec3f(0.f, 0.f, 0.f),
+        Vec3f(1.f, 0.f, 0.f),
+        Vec3f(0.f, 1.f, 0.f),
+        Vec3f(1.f, 1.f, 1.f),
+        Vec3f(0.f, 2.f, 1.f),
+    };
+    mesh.indices = {
+        stl_triangle_vertex_indices(0, 1, 2),
+        stl_triangle_vertex_indices(1, 2, 3),
+        stl_triangle_vertex_indices(2, 3, 4),
+    };
+    return mesh;
+}
+
 float max_score(const std::vector<float> &scores)
 {
     return *std::max_element(scores.begin(), scores.end());
@@ -180,7 +198,7 @@ TEST_CASE("Surface feature analysis does not publish partial results when cancel
 TEST_CASE("Surface feature analysis cancels while sorting edge records", "[SurfaceFeatureAnalysis]")
 {
     const indexed_triangle_set mesh = make_disconnected_triangles(64);
-    const size_t checks_before_sort = 2 * mesh.indices.size() + 2;
+    const size_t checks_before_sort = 4;
     size_t cancellation_checks = 0;
     const SurfaceFeatureField field = analyze_surface_features(mesh, {}, [&] {
         return ++cancellation_checks > checks_before_sort;
@@ -190,4 +208,51 @@ TEST_CASE("Surface feature analysis cancels while sorting edge records", "[Surfa
     CHECK(field.valley_scores.empty());
     CHECK(field.ridge_scores.empty());
     CHECK(cancellation_checks == checks_before_sort + 1);
+}
+
+TEST_CASE("Surface feature analysis smooths feature scores across direct neighbors", "[SurfaceFeatureAnalysis]")
+{
+    const indexed_triangle_set mesh = make_feature_strip();
+    SurfaceFeatureAnalysisOptions raw_options;
+    raw_options.analysis_radius_mm = 0.0f;
+    const SurfaceFeatureField raw = analyze_surface_features(mesh, raw_options);
+
+    SurfaceFeatureAnalysisOptions smoothed_options = raw_options;
+    smoothed_options.analysis_radius_mm = 10.0f;
+    smoothed_options.smoothing_pass_limit = 1;
+    const SurfaceFeatureField smoothed = analyze_surface_features(mesh, smoothed_options);
+
+    REQUIRE(raw.status == SurfaceFeatureAnalysisStatus::Complete);
+    REQUIRE(smoothed.status == SurfaceFeatureAnalysisStatus::Complete);
+    REQUIRE(raw.valley_scores.size() == 3);
+    REQUIRE(smoothed.valley_scores.size() == 3);
+    CHECK(raw.valley_scores[2] + raw.ridge_scores[2] == Approx(0.0f));
+    CHECK(smoothed.valley_scores[2] + smoothed.ridge_scores[2] > 0.0f);
+}
+
+TEST_CASE("Surface feature analysis cancels during smoothing without publishing scores", "[SurfaceFeatureAnalysis]")
+{
+    SurfaceFeatureAnalysisOptions options;
+    options.analysis_radius_mm = 10.0f;
+    options.smoothing_pass_limit = 1;
+    size_t cancellation_checks = 0;
+    const SurfaceFeatureField field = analyze_surface_features(make_two_triangle_plane(), options, [&cancellation_checks] {
+        return ++cancellation_checks >= 7;
+    });
+
+    CHECK(field.status == SurfaceFeatureAnalysisStatus::Canceled);
+    CHECK(field.valley_scores.empty());
+    CHECK(field.ridge_scores.empty());
+}
+
+TEST_CASE("Surface feature selection removes undersized isolated patches", "[SurfaceFeatureAnalysis]")
+{
+    SurfaceFeatureField field;
+    field.status = SurfaceFeatureAnalysisStatus::Complete;
+    field.valley_scores = { 0.9f, 0.9f, 0.05f };
+    field.triangle_areas_mm2 = { 0.02f, 0.02f, 1.0f };
+    field.triangle_neighbors = { { 1 }, { 0 }, {} };
+
+    CHECK(select_surface_feature_triangles(field, SurfaceFeatureMode::Valleys, 0.5f, 0.1f).empty());
+    CHECK(select_surface_feature_triangles(field, SurfaceFeatureMode::Valleys, 0.5f, 0.0f) == std::vector<size_t> { 0, 1 });
 }
