@@ -1,7 +1,7 @@
 #include "SurfaceFeatureAnalysis.hpp"
 
 #include <algorithm>
-#include <map>
+#include <tuple>
 #include <utility>
 
 namespace Slic3r {
@@ -9,7 +9,18 @@ namespace Slic3r {
 namespace {
 
 using Edge = std::pair<int, int>;
-using EdgeFaces = std::map<Edge, std::vector<size_t>>;
+
+struct EdgeRecord
+{
+    Edge edge;
+    size_t triangle_index;
+
+    bool operator<(const EdgeRecord &rhs) const
+    {
+        return std::tie(this->edge.first, this->edge.second, this->triangle_index)
+             < std::tie(rhs.edge.first, rhs.edge.second, rhs.triangle_index);
+    }
+};
 
 Edge make_edge(int first, int second)
 {
@@ -74,7 +85,8 @@ SurfaceFeatureField analyze_surface_features(
     field.triangle_areas_mm2.assign(triangle_count, 0.0f);
     field.triangle_neighbors.resize(triangle_count);
 
-    EdgeFaces edge_faces;
+    std::vector<EdgeRecord> edge_records;
+    edge_records.reserve(triangle_count * 3);
     for (size_t triangle_index = 0; triangle_index < triangle_count; ++triangle_index) {
         if (should_cancel(is_canceled))
             return canceled_field();
@@ -93,24 +105,37 @@ SurfaceFeatureField analyze_surface_features(
 
         for (size_t edge = 0; edge < 3; ++edge) {
             const int next = edge == 2 ? 0 : int(edge) + 1;
-            edge_faces[make_edge(triangle[edge], triangle[next])].push_back(triangle_index);
+            edge_records.push_back({ make_edge(triangle[edge], triangle[next]), triangle_index });
         }
     }
 
-    for (const auto &entry : edge_faces) {
+    if (should_cancel(is_canceled))
+        return canceled_field();
+
+    std::sort(edge_records.begin(), edge_records.end());
+
+    for (size_t begin = 0; begin < edge_records.size();) {
         if (should_cancel(is_canceled))
             return canceled_field();
 
-        const std::vector<size_t> &incident_triangles = entry.second;
-        if (incident_triangles.size() == 1) {
-            field.warnings.push_back({ SurfaceFeatureWarning::Code::BoundaryEdge, incident_triangles.front() });
-        } else if (incident_triangles.size() == 2) {
-            field.triangle_neighbors[incident_triangles[0]].push_back(incident_triangles[1]);
-            field.triangle_neighbors[incident_triangles[1]].push_back(incident_triangles[0]);
+        size_t end = begin + 1;
+        while (end < edge_records.size() && edge_records[end].edge == edge_records[begin].edge)
+            ++end;
+
+        const size_t incident_count = end - begin;
+        if (incident_count == 1) {
+            field.warnings.push_back({ SurfaceFeatureWarning::Code::BoundaryEdge, edge_records[begin].triangle_index });
+        } else if (incident_count == 2) {
+            const size_t first_triangle = edge_records[begin].triangle_index;
+            const size_t second_triangle = edge_records[begin + 1].triangle_index;
+            field.triangle_neighbors[first_triangle].push_back(second_triangle);
+            field.triangle_neighbors[second_triangle].push_back(first_triangle);
         } else {
-            for (size_t triangle_index : incident_triangles)
-                field.warnings.push_back({ SurfaceFeatureWarning::Code::NonManifoldEdge, triangle_index });
+            for (size_t index = begin; index < end; ++index)
+                field.warnings.push_back({ SurfaceFeatureWarning::Code::NonManifoldEdge, edge_records[index].triangle_index });
         }
+
+        begin = end;
     }
 
     for (std::vector<size_t> &neighbors : field.triangle_neighbors)

@@ -57,10 +57,13 @@ TEST_CASE("Surface feature analysis rejects invalid triangle indices", "[Surface
     CHECK(field.ridge_scores.empty());
 }
 
-TEST_CASE("Surface feature analysis does not publish partial results when canceled", "[SurfaceFeatureAnalysis]")
+TEST_CASE("Surface feature analysis does not publish partial results when canceled after analysis begins", "[SurfaceFeatureAnalysis]")
 {
     const indexed_triangle_set mesh = make_two_triangle_plane();
-    const SurfaceFeatureField field = analyze_surface_features(mesh, {}, [] { return true; });
+    size_t cancellation_checks = 0;
+    const SurfaceFeatureField field = analyze_surface_features(mesh, {}, [&cancellation_checks] {
+        return ++cancellation_checks >= 5;
+    });
 
     CHECK(field.status == SurfaceFeatureAnalysisStatus::Canceled);
     CHECK(field.valley_scores.empty());
