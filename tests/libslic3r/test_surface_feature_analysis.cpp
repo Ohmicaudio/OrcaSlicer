@@ -109,6 +109,31 @@ TEST_CASE("Surface feature analysis distinguishes a trough from a ridge", "[Surf
     CHECK(max_score(ridge.ridge_scores) > max_score(ridge.valley_scores));
 }
 
+TEST_CASE("Surface feature analysis preserves trough classification when triangle storage is reordered", "[SurfaceFeatureAnalysis]")
+{
+    const indexed_triangle_set original_mesh = make_v_trough();
+    indexed_triangle_set reordered_mesh = original_mesh;
+    reordered_mesh.indices = {
+        original_mesh.indices[2],
+        original_mesh.indices[0],
+        original_mesh.indices[3],
+        original_mesh.indices[1],
+    };
+    const std::vector<size_t> reordered_to_original = { 2, 0, 3, 1 };
+
+    const SurfaceFeatureField original = analyze_surface_features(original_mesh, {});
+    const SurfaceFeatureField reordered = analyze_surface_features(reordered_mesh, {});
+
+    REQUIRE(original.status == SurfaceFeatureAnalysisStatus::Complete);
+    REQUIRE(reordered.status == SurfaceFeatureAnalysisStatus::Complete);
+    REQUIRE(original.valley_scores.size() == reordered.valley_scores.size());
+    for (size_t reordered_index = 0; reordered_index < reordered_to_original.size(); ++reordered_index) {
+        const size_t original_index = reordered_to_original[reordered_index];
+        CHECK(reordered.valley_scores[reordered_index] == Approx(original.valley_scores[original_index]));
+        CHECK(reordered.ridge_scores[reordered_index] == Approx(original.ridge_scores[original_index]));
+    }
+}
+
 TEST_CASE("Surface feature analysis warns on non-manifold shared edges", "[SurfaceFeatureAnalysis]")
 {
     indexed_triangle_set mesh;

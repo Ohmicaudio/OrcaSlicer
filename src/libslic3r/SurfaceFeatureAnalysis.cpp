@@ -34,6 +34,12 @@ Edge make_edge(int first, int second)
     return first < second ? Edge(first, second) : Edge(second, first);
 }
 
+bool follows_canonical_edge_direction(const EdgeRecord &record)
+{
+    return record.directed_first_vertex == record.edge.first
+        && record.directed_second_vertex == record.edge.second;
+}
+
 bool should_cancel(const std::function<bool()> &callback)
 {
     return callback && callback();
@@ -147,15 +153,18 @@ SurfaceFeatureField analyze_surface_features(
         if (incident_count == 1) {
             field.warnings.push_back({ SurfaceFeatureWarning::Code::BoundaryEdge, edge_records[begin].triangle_index });
         } else if (incident_count == 2) {
-            const EdgeRecord &first_use = edge_records[begin];
-            const EdgeRecord &second_use = edge_records[begin + 1];
+            const EdgeRecord &first_record = edge_records[begin];
+            const EdgeRecord &second_record = edge_records[begin + 1];
+            const bool first_follows_canonical_direction = follows_canonical_edge_direction(first_record);
+            const EdgeRecord &first_use = first_follows_canonical_direction ? first_record : second_record;
+            const EdgeRecord &second_use = first_follows_canonical_direction ? second_record : first_record;
             const size_t first_triangle = first_use.triangle_index;
             const size_t second_triangle = second_use.triangle_index;
             field.triangle_neighbors[first_triangle].push_back(second_triangle);
             field.triangle_neighbors[second_triangle].push_back(first_triangle);
 
             if (field.triangle_areas_mm2[first_triangle] > 0.0f && field.triangle_areas_mm2[second_triangle] > 0.0f) {
-                const Vec3f edge_direction = (mesh.vertices[first_use.directed_second_vertex] - mesh.vertices[first_use.directed_first_vertex]).normalized();
+                const Vec3f edge_direction = (mesh.vertices[first_use.edge.second] - mesh.vertices[first_use.edge.first]).normalized();
                 const float signed_sine = edge_direction.dot(face_normals[first_triangle].cross(face_normals[second_triangle]));
                 const float cosine = face_normals[first_triangle].dot(face_normals[second_triangle]);
                 const float signed_bend = std::atan2(signed_sine, cosine);
