@@ -7,9 +7,14 @@
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <memory>
 #include <vector>
 
+class wxWindow;
+
 namespace Slic3r::GUI {
+
+class Worker;
 
 struct SurfaceColorAssistKey
 {
@@ -35,27 +40,30 @@ class SurfaceColorAssist
 public:
     static constexpr size_t PreviewBandCount = 8;
 
+    explicit SurfaceColorAssist(wxWindow *event_owner);
+    ~SurfaceColorAssist();
+
+    SurfaceColorAssist(const SurfaceColorAssist&) = delete;
+    SurfaceColorAssist& operator=(const SurfaceColorAssist&) = delete;
+
     void set_current_volume(const ModelVolume *volume);
     bool analyze_current_volume();
     void cancel();
     void clear();
 
-    const SurfaceColorAssistSettings& settings() const { return m_settings; }
-    SurfaceColorAssistSettings&       settings() { return m_settings; }
-    const std::optional<SurfaceFeatureField>& field() const { return m_field; }
-    const std::optional<SurfaceColorAssistKey>& active_key() const { return m_active_key; }
+    const SurfaceColorAssistSettings& settings() const;
+    SurfaceColorAssistSettings&       settings();
+    const SurfaceFeatureField*        current_field(const ModelVolume &volume) const;
 
 private:
-    SurfaceColorAssistKey make_key(const ModelVolume &volume) const;
-    bool matches_current_volume(const SurfaceColorAssistKey &key) const;
-    void adopt_completed_field(SurfaceFeatureField field);
+    struct State;
 
-    const ModelVolume *m_current_volume { nullptr };
-    std::optional<SurfaceFeatureField> m_field;
-    std::optional<SurfaceColorAssistKey> m_active_key;
-    SurfaceColorAssistSettings m_settings;
-    size_t m_generation { 0 };
-    std::array<std::vector<size_t>, PreviewBandCount> m_preview_bands;
+    SurfaceColorAssistKey make_key(const ModelVolume &volume) const;
+    static bool keys_match(const SurfaceColorAssistKey &lhs, const SurfaceColorAssistKey &rhs);
+    static void clear_cached_result(State &state);
+
+    std::shared_ptr<State> m_state;
+    std::unique_ptr<Worker> m_worker;
 };
 
 } // namespace Slic3r::GUI
