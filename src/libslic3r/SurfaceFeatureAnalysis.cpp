@@ -10,6 +10,8 @@ namespace {
 
 using Edge = std::pair<int, int>;
 
+class SortCanceled {};
+
 struct EdgeRecord
 {
     Edge edge;
@@ -112,7 +114,17 @@ SurfaceFeatureField analyze_surface_features(
     if (should_cancel(is_canceled))
         return canceled_field();
 
-    std::sort(edge_records.begin(), edge_records.end());
+    size_t sort_comparison_count = 0;
+    try {
+        std::sort(edge_records.begin(), edge_records.end(), [&is_canceled, &sort_comparison_count](const EdgeRecord &lhs, const EdgeRecord &rhs) {
+            constexpr size_t cancellation_poll_interval = 64;
+            if (++sort_comparison_count % cancellation_poll_interval == 0 && should_cancel(is_canceled))
+                throw SortCanceled();
+            return lhs < rhs;
+        });
+    } catch (const SortCanceled &) {
+        return canceled_field();
+    }
 
     for (size_t begin = 0; begin < edge_records.size();) {
         if (should_cancel(is_canceled))

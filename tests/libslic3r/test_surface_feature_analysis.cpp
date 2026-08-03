@@ -25,6 +25,21 @@ indexed_triangle_set make_two_triangle_plane()
     return mesh;
 }
 
+indexed_triangle_set make_disconnected_triangles(size_t triangle_count)
+{
+    indexed_triangle_set mesh;
+    mesh.vertices.reserve(triangle_count * 3);
+    mesh.indices.reserve(triangle_count);
+    for (size_t triangle_index = 0; triangle_index < triangle_count; ++triangle_index) {
+        const int first_vertex = int(triangle_index * 3);
+        mesh.vertices.emplace_back(float(first_vertex), 0.f, 0.f);
+        mesh.vertices.emplace_back(float(first_vertex), 1.f, 0.f);
+        mesh.vertices.emplace_back(float(first_vertex), 0.f, 1.f);
+        mesh.indices.emplace_back(first_vertex, first_vertex + 1, first_vertex + 2);
+    }
+    return mesh;
+}
+
 } // namespace
 
 TEST_CASE("Surface feature analysis leaves a flat mesh unscored", "[SurfaceFeatureAnalysis]")
@@ -68,4 +83,19 @@ TEST_CASE("Surface feature analysis does not publish partial results when cancel
     CHECK(field.status == SurfaceFeatureAnalysisStatus::Canceled);
     CHECK(field.valley_scores.empty());
     CHECK(field.ridge_scores.empty());
+}
+
+TEST_CASE("Surface feature analysis cancels while sorting edge records", "[SurfaceFeatureAnalysis]")
+{
+    const indexed_triangle_set mesh = make_disconnected_triangles(64);
+    const size_t checks_before_sort = 2 * mesh.indices.size() + 2;
+    size_t cancellation_checks = 0;
+    const SurfaceFeatureField field = analyze_surface_features(mesh, {}, [&] {
+        return ++cancellation_checks > checks_before_sort;
+    });
+
+    CHECK(field.status == SurfaceFeatureAnalysisStatus::Canceled);
+    CHECK(field.valley_scores.empty());
+    CHECK(field.ridge_scores.empty());
+    CHECK(cancellation_checks == checks_before_sort + 1);
 }
