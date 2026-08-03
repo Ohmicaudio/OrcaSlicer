@@ -1,5 +1,4 @@
 #include <algorithm>
-
 #include <catch2/catch.hpp>
 
 #include "libslic3r/SurfaceFeatureAnalysis.hpp"
@@ -40,6 +39,42 @@ indexed_triangle_set make_disconnected_triangles(size_t triangle_count)
     return mesh;
 }
 
+indexed_triangle_set make_v_crease(bool raised)
+{
+    const float outer_z = raised ? -1.0f : 1.0f;
+    indexed_triangle_set mesh;
+    mesh.vertices = {
+        Vec3f(0.f, 0.f, 0.f),
+        Vec3f(1.f, 0.f, 0.f),
+        Vec3f(0.f, 1.f, outer_z),
+        Vec3f(1.f, 1.f, outer_z),
+        Vec3f(0.f, -1.f, outer_z),
+        Vec3f(1.f, -1.f, outer_z),
+    };
+    mesh.indices = {
+        stl_triangle_vertex_indices(0, 1, 3),
+        stl_triangle_vertex_indices(0, 3, 2),
+        stl_triangle_vertex_indices(1, 0, 4),
+        stl_triangle_vertex_indices(1, 4, 5),
+    };
+    return mesh;
+}
+
+indexed_triangle_set make_v_trough()
+{
+    return make_v_crease(false);
+}
+
+indexed_triangle_set make_v_ridge()
+{
+    return make_v_crease(true);
+}
+
+float max_score(const std::vector<float> &scores)
+{
+    return *std::max_element(scores.begin(), scores.end());
+}
+
 } // namespace
 
 TEST_CASE("Surface feature analysis leaves a flat mesh unscored", "[SurfaceFeatureAnalysis]")
@@ -59,6 +94,38 @@ TEST_CASE("Surface feature analysis is repeatable", "[SurfaceFeatureAnalysis]")
 {
     const indexed_triangle_set mesh = make_two_triangle_plane();
     CHECK(analyze_surface_features(mesh, {}) == analyze_surface_features(mesh, {}));
+}
+
+TEST_CASE("Surface feature analysis distinguishes a trough from a ridge", "[SurfaceFeatureAnalysis]")
+{
+    const SurfaceFeatureField trough = analyze_surface_features(make_v_trough(), {});
+    const SurfaceFeatureField ridge = analyze_surface_features(make_v_ridge(), {});
+
+    REQUIRE(trough.status == SurfaceFeatureAnalysisStatus::Complete);
+    REQUIRE(ridge.status == SurfaceFeatureAnalysisStatus::Complete);
+    CHECK(max_score(trough.valley_scores) > 0.0f);
+    CHECK(max_score(trough.valley_scores) > max_score(trough.ridge_scores));
+    CHECK(max_score(ridge.ridge_scores) > 0.0f);
+    CHECK(max_score(ridge.ridge_scores) > max_score(ridge.valley_scores));
+}
+
+TEST_CASE("Surface feature analysis warns on non-manifold shared edges", "[SurfaceFeatureAnalysis]")
+{
+    indexed_triangle_set mesh;
+    mesh.vertices = {
+        Vec3f(0.f, 0.f, 0.f), Vec3f(1.f, 0.f, 0.f), Vec3f(0.f, 1.f, 0.f),
+        Vec3f(0.f, -1.f, 0.f), Vec3f(0.f, 0.f, 1.f),
+    };
+    mesh.indices = {
+        stl_triangle_vertex_indices(0, 1, 2),
+        stl_triangle_vertex_indices(1, 0, 3),
+        stl_triangle_vertex_indices(0, 1, 4),
+    };
+
+    const SurfaceFeatureField field = analyze_surface_features(mesh, {});
+    CHECK(std::any_of(field.warnings.begin(), field.warnings.end(), [](const SurfaceFeatureWarning &warning) {
+        return warning.code == SurfaceFeatureWarning::Code::NonManifoldEdge;
+    }));
 }
 
 TEST_CASE("Surface feature analysis rejects invalid triangle indices", "[SurfaceFeatureAnalysis]")

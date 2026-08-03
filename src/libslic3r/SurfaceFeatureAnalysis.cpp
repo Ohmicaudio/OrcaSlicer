@@ -1,6 +1,7 @@
 #include "SurfaceFeatureAnalysis.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <tuple>
 #include <utility>
 
@@ -10,12 +11,16 @@ namespace {
 
 using Edge = std::pair<int, int>;
 
+constexpr float pi = 3.14159265358979323846f;
+
 class SortCanceled {};
 
 struct EdgeRecord
 {
     Edge edge;
     size_t triangle_index;
+    int directed_first_vertex;
+    int directed_second_vertex;
 
     bool operator<(const EdgeRecord &rhs) const
     {
@@ -87,6 +92,8 @@ SurfaceFeatureField analyze_surface_features(
     field.triangle_areas_mm2.assign(triangle_count, 0.0f);
     field.triangle_neighbors.resize(triangle_count);
 
+    std::vector<Vec3f> face_normals(triangle_count, Vec3f::Zero());
+
     std::vector<EdgeRecord> edge_records;
     edge_records.reserve(triangle_count * 3);
     for (size_t triangle_index = 0; triangle_index < triangle_count; ++triangle_index) {
@@ -102,12 +109,14 @@ SurfaceFeatureField analyze_surface_features(
 
         if (doubled_area == 0.0f)
             field.warnings.push_back({ SurfaceFeatureWarning::Code::DegenerateTriangle, triangle_index });
-        else
+        else {
             field.triangle_areas_mm2[triangle_index] = 0.5f * doubled_area;
+            face_normals[triangle_index] = normal / doubled_area;
+        }
 
         for (size_t edge = 0; edge < 3; ++edge) {
             const int next = edge == 2 ? 0 : int(edge) + 1;
-            edge_records.push_back({ make_edge(triangle[edge], triangle[next]), triangle_index });
+            edge_records.push_back({ make_edge(triangle[edge], triangle[next]), triangle_index, triangle[edge], triangle[next] });
         }
     }
 
@@ -138,10 +147,28 @@ SurfaceFeatureField analyze_surface_features(
         if (incident_count == 1) {
             field.warnings.push_back({ SurfaceFeatureWarning::Code::BoundaryEdge, edge_records[begin].triangle_index });
         } else if (incident_count == 2) {
-            const size_t first_triangle = edge_records[begin].triangle_index;
-            const size_t second_triangle = edge_records[begin + 1].triangle_index;
+            const EdgeRecord &first_use = edge_records[begin];
+            const EdgeRecord &second_use = edge_records[begin + 1];
+            const size_t first_triangle = first_use.triangle_index;
+            const size_t second_triangle = second_use.triangle_index;
             field.triangle_neighbors[first_triangle].push_back(second_triangle);
             field.triangle_neighbors[second_triangle].push_back(first_triangle);
+
+            if (field.triangle_areas_mm2[first_triangle] > 0.0f && field.triangle_areas_mm2[second_triangle] > 0.0f) {
+                const Vec3f edge_direction = (mesh.vertices[first_use.directed_second_vertex] - mesh.vertices[first_use.directed_first_vertex]).normalized();
+                const float signed_sine = edge_direction.dot(face_normals[first_triangle].cross(face_normals[second_triangle]));
+                const float cosine = face_normals[first_triangle].dot(face_normals[second_triangle]);
+                const float signed_bend = std::atan2(signed_sine, cosine);
+                const float score = std::min(1.0f, std::abs(signed_bend) / pi);
+
+                if (signed_bend < 0.0f) {
+                    field.valley_scores[first_triangle] += score;
+                    field.valley_scores[second_triangle] += score;
+                } else if (signed_bend > 0.0f) {
+                    field.ridge_scores[first_triangle] += score;
+                    field.ridge_scores[second_triangle] += score;
+                }
+            }
         } else {
             for (size_t index = begin; index < end; ++index)
                 field.warnings.push_back({ SurfaceFeatureWarning::Code::NonManifoldEdge, edge_records[index].triangle_index });
