@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <tuple>
 #include <utility>
 
@@ -235,11 +236,15 @@ SurfaceFeatureField analyze_surface_features(
             : lhs.code < rhs.code;
     });
 
-    const float mean_edge_mm = valid_edge_count == 0 ? 0.0f : total_valid_edge_length / float(valid_edge_count);
-    const float requested_radius_mm = std::max(0.0f, options.analysis_radius_mm);
-    const unsigned passes = std::min(
-        unsigned(std::ceil(requested_radius_mm / std::max(mean_edge_mm, 0.001f))),
-        options.smoothing_pass_limit);
+    const double mean_edge_mm = valid_edge_count == 0 ? 0.0 : double(total_valid_edge_length) / double(valid_edge_count);
+    const double smoothing_step_mm = std::max(mean_edge_mm, 0.001);
+    const double requested_radius_mm = std::isfinite(options.analysis_radius_mm)
+        ? std::max(0.0, double(options.analysis_radius_mm))
+        : std::numeric_limits<double>::infinity();
+    const double bounded_pass_count = std::min(
+        std::ceil(requested_radius_mm / smoothing_step_mm),
+        double(options.smoothing_pass_limit));
+    const unsigned passes = static_cast<unsigned>(bounded_pass_count);
     if (!smooth_scores(field.valley_scores, field.triangle_neighbors, passes, is_canceled)
         || !smooth_scores(field.ridge_scores, field.triangle_neighbors, passes, is_canceled))
         return canceled_field();

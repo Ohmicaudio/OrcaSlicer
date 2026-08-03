@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <catch2/catch.hpp>
+#include <limits>
 
 #include "libslic3r/SurfaceFeatureAnalysis.hpp"
 #include "libslic3r/TriangleMesh.hpp"
@@ -228,6 +229,19 @@ TEST_CASE("Surface feature analysis smooths feature scores across direct neighbo
     REQUIRE(smoothed.valley_scores.size() == 3);
     CHECK(raw.valley_scores[2] + raw.ridge_scores[2] == Approx(0.0f));
     CHECK(smoothed.valley_scores[2] + smoothed.ridge_scores[2] > 0.0f);
+}
+
+TEST_CASE("Surface feature analysis bounds a non-finite radius before deriving smoothing passes", "[SurfaceFeatureAnalysis]")
+{
+    const indexed_triangle_set mesh = make_feature_strip();
+    SurfaceFeatureAnalysisOptions finite_options;
+    finite_options.analysis_radius_mm = 10.0f;
+    finite_options.smoothing_pass_limit = 1;
+
+    SurfaceFeatureAnalysisOptions non_finite_options = finite_options;
+    non_finite_options.analysis_radius_mm = std::numeric_limits<float>::infinity();
+
+    CHECK(analyze_surface_features(mesh, non_finite_options) == analyze_surface_features(mesh, finite_options));
 }
 
 TEST_CASE("Surface feature analysis cancels during smoothing without publishing scores", "[SurfaceFeatureAnalysis]")
