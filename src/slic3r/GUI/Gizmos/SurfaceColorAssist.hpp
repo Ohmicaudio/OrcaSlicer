@@ -3,6 +3,7 @@
 
 #include "libslic3r/Model.hpp"
 #include "libslic3r/SurfaceFeatureAnalysis.hpp"
+#include "slic3r/GUI/GLModel.hpp"
 
 #include <array>
 #include <cstddef>
@@ -50,6 +51,10 @@ public:
     bool analyze_current_volume();
     void cancel();
     void clear();
+    bool is_analyzing() const;
+
+    // Draws only transient score geometry. This never touches color-paint data.
+    void render_preview(const ModelVolume &volume);
 
     const SurfaceColorAssistSettings& settings() const;
     SurfaceColorAssistSettings&       settings();
@@ -61,6 +66,7 @@ private:
     SurfaceColorAssistKey make_key(const ModelVolume &volume) const;
     static bool keys_match(const SurfaceColorAssistKey &lhs, const SurfaceColorAssistKey &rhs);
     static void clear_cached_result(State &state);
+    void rebuild_preview_bands(const ModelVolume &volume);
 
     std::shared_ptr<State> m_state;
     std::unique_ptr<Worker> m_worker;

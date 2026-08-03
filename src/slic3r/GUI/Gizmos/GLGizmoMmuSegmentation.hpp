@@ -2,6 +2,7 @@
 #define slic3r_GLGizmoMmuSegmentation_hpp_
 
 #include "GLGizmoPainterBase.hpp"
+#include "SurfaceColorAssist.hpp"
 #include "libslic3r/MixedFilament.hpp"
 
 namespace Slic3r::GUI {
@@ -111,6 +112,7 @@ protected:
     std::vector<ColorRGBA>            m_extruders_colors;
     std::vector<unsigned int>         m_display_filament_ids;
     std::vector<int>                  m_volumes_extruder_idxs;
+    SurfaceColorAssist                 m_surface_color_assist;
 
     // BBS
     wchar_t                           m_current_tool = 0;

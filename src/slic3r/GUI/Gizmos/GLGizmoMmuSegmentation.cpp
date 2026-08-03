@@ -73,6 +73,7 @@ void GLGizmoMmuSegmentation::on_opening()
 
 void GLGizmoMmuSegmentation::on_shutdown()
 {
+    m_surface_color_assist.clear();
     m_parent.use_slope(false);
     m_parent.toggle_model_objects_visibility(true);
 }
@@ -240,7 +241,9 @@ bool GLGizmoMmuSegmentation::on_init()
 }
 
 GLGizmoMmuSegmentation::GLGizmoMmuSegmentation(GLCanvas3D& parent, const std::string& icon_filename, unsigned int sprite_id)
-    : GLGizmoPainterBase(parent, icon_filename, sprite_id), m_current_tool(ImGui::CircleButtonIcon)
+    : GLGizmoPainterBase(parent, icon_filename, sprite_id)
+    , m_current_tool(ImGui::CircleButtonIcon)
+    , m_surface_color_assist(&parent)
 {
 }
 
@@ -255,6 +258,8 @@ void GLGizmoMmuSegmentation::render_painter_gizmo()
 
     m_c->object_clipper()->render_cut();
     m_c->instances_hider()->render_cut();
+    if (ModelVolume *volume = get_selected_volume(selection))
+        m_surface_color_assist.render_preview(*volume);
     render_cursor();
 
     glsafe(::glDisable(GL_BLEND));
@@ -429,6 +434,9 @@ void GLGizmoMmuSegmentation::show_tooltip_information(float caption_max, float x
 void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bottom_limit)
 {
     if (!m_c->selection_info()->model_object()) return;
+
+    ModelVolume *selected_volume = get_selected_volume(m_parent.get_selection());
+    m_surface_color_assist.set_current_volume(selected_volume);
 
     const float approx_height = m_imgui->scaled(22.0f);
     y = std::min(y, bottom_limit - approx_height);
@@ -889,6 +897,39 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         if(m_horizontal_only){
             m_vertical_only = false;
         }
+    }
+
+    if (ImGui::CollapsingHeader(_u8L("Surface Color Assist").c_str())) {
+        SurfaceColorAssistSettings &assist_settings = m_surface_color_assist.settings();
+        int mode = assist_settings.mode == SurfaceFeatureMode::Valleys ? 0 : 1;
+        const char *modes[] = { "Valleys", "Ridges" };
+        if (ImGui::Combo("Mode", &mode, modes, IM_ARRAYSIZE(modes)))
+            assist_settings.mode = mode == 0 ? SurfaceFeatureMode::Valleys : SurfaceFeatureMode::Ridges;
+
+        ImGui::DragFloat("Analysis radius", &assist_settings.analysis_radius_mm, 0.05f, 0.05f, 20.0f, "%.2f mm");
+        ImGui::DragFloat("Threshold", &assist_settings.threshold, 0.01f, 0.0f, 1.0f, "%.2f");
+        ImGui::DragFloat("Preview falloff", &assist_settings.preview_falloff, 0.01f, 0.01f, 1.0f, "%.2f");
+        ImGui::DragFloat("Minimum patch area", &assist_settings.min_patch_area_mm2, 0.01f, 0.0f, 1000.0f, "%.2f mm2");
+
+        if (m_surface_color_assist.is_analyzing()) {
+            ImGui::TextUnformatted("Analyzing selected volume...");
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel##surface_color_assist"))
+                m_surface_color_assist.cancel();
+        } else {
+            ImGui::BeginDisabled(selected_volume == nullptr);
+            if (ImGui::Button("Analyze##surface_color_assist"))
+                m_surface_color_assist.analyze_current_volume();
+            ImGui::EndDisabled();
+        }
+
+        if (selected_volume != nullptr) {
+            if (const SurfaceFeatureField *field = m_surface_color_assist.current_field(*selected_volume)) {
+                for (const std::string &warning : field->warnings)
+                    ImGui::TextWrapped("%s", warning.c_str());
+            }
+        }
+        ImGui::TextDisabled("Preview only. No color paint is applied.");
     }
 
     ImGui::Separator();
