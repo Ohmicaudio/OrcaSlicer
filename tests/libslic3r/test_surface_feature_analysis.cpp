@@ -283,3 +283,56 @@ TEST_CASE("Surface feature selection removes undersized isolated patches", "[Sur
     CHECK(select_surface_feature_triangles(field, SurfaceFeatureMode::Valleys, 0.5f, 0.1f).empty());
     CHECK(select_surface_feature_triangles(field, SurfaceFeatureMode::Valleys, 0.5f, 0.0f) == std::vector<size_t> { 0, 1 });
 }
+
+TEST_CASE("Surface feature color suggestion prefers dark valleys and bright ridges", "[SurfaceFeatureAnalysis]")
+{
+    const std::vector<SurfaceFeatureColor> palette {
+        { 180, 180, 180, 255 },
+        { 20, 20, 20, 255 },
+        { 250, 240, 80, 255 },
+    };
+
+    CHECK(suggest_surface_feature_filament(SurfaceFeatureMode::Valleys, 0, palette) == 1);
+    CHECK(suggest_surface_feature_filament(SurfaceFeatureMode::Ridges, 0, palette) == 2);
+    CHECK_FALSE(suggest_surface_feature_filament(SurfaceFeatureMode::Valleys, 0, { palette.front() }));
+}
+
+TEST_CASE("Surface feature color suggestion rejects insufficient contrast and invalid bases", "[SurfaceFeatureAnalysis]")
+{
+    const std::vector<SurfaceFeatureColor> palette {
+        { 100, 100, 100, 255 },
+        { 110, 110, 110, 255 },
+        { 10, 10, 10, 255 },
+        { 245, 245, 245, 255 },
+    };
+
+    CHECK_FALSE(suggest_surface_feature_filament(SurfaceFeatureMode::Valleys, palette.size(), palette));
+    CHECK(suggest_surface_feature_filament(SurfaceFeatureMode::Valleys, 0, palette) == 2);
+    CHECK(suggest_surface_feature_filament(SurfaceFeatureMode::Ridges, 0, palette) == 3);
+}
+
+TEST_CASE("Surface feature color suggestion ignores unavailable colors", "[SurfaceFeatureAnalysis]")
+{
+    const std::vector<SurfaceFeatureColor> palette {
+        { 220, 220, 220, 255 },
+        { 10, 10, 10, 0 },
+        { 20, 20, 20, 255 },
+    };
+
+    CHECK(suggest_surface_feature_filament(SurfaceFeatureMode::Valleys, 0, palette) == 2);
+    CHECK_FALSE(suggest_surface_feature_filament(SurfaceFeatureMode::Valleys, 1, palette));
+}
+
+TEST_CASE("Surface feature color suggestion breaks equal luminance ties by palette index", "[SurfaceFeatureAnalysis]")
+{
+    const std::vector<SurfaceFeatureColor> palette {
+        { 180, 180, 180, 255 },
+        { 20, 20, 20, 255 },
+        { 20, 20, 20, 255 },
+        { 250, 250, 250, 255 },
+        { 250, 250, 250, 255 },
+    };
+
+    CHECK(suggest_surface_feature_filament(SurfaceFeatureMode::Valleys, 0, palette) == 1);
+    CHECK(suggest_surface_feature_filament(SurfaceFeatureMode::Ridges, 0, palette) == 3);
+}

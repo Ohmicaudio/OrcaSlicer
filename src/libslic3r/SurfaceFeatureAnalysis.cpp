@@ -41,6 +41,26 @@ bool follows_canonical_edge_direction(const EdgeRecord &record)
         && record.directed_second_vertex == record.edge.second;
 }
 
+float linear_srgb(uint8_t component)
+{
+    const float normalized = float(component) / 255.0f;
+    return normalized <= 0.04045f
+        ? normalized / 12.92f
+        : std::pow((normalized + 0.055f) / 1.055f, 2.4f);
+}
+
+float relative_luminance(const SurfaceFeatureColor &color)
+{
+    return 0.2126f * linear_srgb(color.red)
+         + 0.7152f * linear_srgb(color.green)
+         + 0.0722f * linear_srgb(color.blue);
+}
+
+bool is_usable_color(const SurfaceFeatureColor &color)
+{
+    return color.alpha != 0;
+}
+
 bool should_cancel(const std::function<bool()> &callback)
 {
     return callback && callback();
@@ -305,6 +325,41 @@ std::vector<size_t> select_surface_feature_triangles(
     }
     std::sort(selected.begin(), selected.end());
     return selected;
+}
+
+std::optional<size_t> suggest_surface_feature_filament(
+    SurfaceFeatureMode mode,
+    size_t base_filament,
+    const std::vector<SurfaceFeatureColor> &palette)
+{
+    if (base_filament >= palette.size() || !is_usable_color(palette[base_filament]))
+        return std::nullopt;
+
+    constexpr float minimum_contrast = 0.20f;
+    const float base_luminance = relative_luminance(palette[base_filament]);
+    std::optional<size_t> suggestion;
+    float best_luminance = mode == SurfaceFeatureMode::Valleys
+        ? std::numeric_limits<float>::infinity()
+        : -std::numeric_limits<float>::infinity();
+
+    for (size_t candidate = 0; candidate < palette.size(); ++candidate) {
+        if (candidate == base_filament || !is_usable_color(palette[candidate]))
+            continue;
+
+        const float candidate_luminance = relative_luminance(palette[candidate]);
+        if (std::abs(candidate_luminance - base_luminance) < minimum_contrast)
+            continue;
+
+        const bool is_better = mode == SurfaceFeatureMode::Valleys
+            ? candidate_luminance < best_luminance
+            : candidate_luminance > best_luminance;
+        if (is_better) {
+            suggestion = candidate;
+            best_luminance = candidate_luminance;
+        }
+    }
+
+    return suggestion;
 }
 
 } // namespace Slic3r

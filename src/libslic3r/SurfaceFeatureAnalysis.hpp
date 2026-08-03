@@ -4,7 +4,9 @@
 #include "TriangleMesh.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <optional>
 #include <vector>
 
 namespace Slic3r {
@@ -25,6 +27,14 @@ struct SurfaceFeatureAnalysisOptions
     float analysis_radius_mm { 1.0f };
     float min_patch_area_mm2 { 0.25f };
     unsigned smoothing_pass_limit { 6 };
+};
+
+struct SurfaceFeatureColor
+{
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+    uint8_t alpha;
 };
 
 struct SurfaceFeatureWarning
@@ -63,6 +73,11 @@ std::vector<size_t> select_surface_feature_triangles(
     SurfaceFeatureMode mode,
     float threshold,
     float min_patch_area_mm2);
+
+std::optional<size_t> suggest_surface_feature_filament(
+    SurfaceFeatureMode mode,
+    size_t base_filament,
+    const std::vector<SurfaceFeatureColor> &palette);
 
 } // namespace Slic3r
 
