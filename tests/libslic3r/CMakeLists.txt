@@ -12,6 +12,7 @@ add_executable(${_TEST_NAME}_tests
 	test_adaptive_manufacturing_plan.cpp
 	test_adaptive_manufacturing_planner.cpp
 	test_adaptive_manufacturing_sidecar.cpp
+	test_surface_feature_analysis.cpp
 	test_aabbindirect.cpp
 	test_clipper_offset.cpp
 	test_clipper_utils.cpp

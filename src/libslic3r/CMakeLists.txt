@@ -41,6 +41,8 @@ set(lisbslic3r_sources
     AdaptiveManufacturingPlanner.hpp
     AdaptiveManufacturingSidecar.cpp
     AdaptiveManufacturingSidecar.hpp
+    SurfaceFeatureAnalysis.cpp
+    SurfaceFeatureAnalysis.hpp
     Algorithm/LineSplit.cpp
     Algorithm/LineSplit.hpp
     Algorithm/RegionExpansion.cpp
