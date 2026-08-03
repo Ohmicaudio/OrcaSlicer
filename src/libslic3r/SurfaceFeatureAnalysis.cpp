@@ -106,6 +106,18 @@ SurfaceFeatureField analyze_surface_features(
     if (should_cancel(is_canceled))
         return canceled_field();
 
+    for (size_t vertex_index = 0; vertex_index < mesh.vertices.size(); ++vertex_index) {
+        if (is_canceled_at_interval(is_canceled, vertex_index))
+            return canceled_field();
+
+        const Vec3f &vertex = mesh.vertices[vertex_index];
+        if (!std::isfinite(vertex.x()) || !std::isfinite(vertex.y()) || !std::isfinite(vertex.z())) {
+            SurfaceFeatureField field;
+            field.status = SurfaceFeatureAnalysisStatus::InvalidMesh;
+            return field;
+        }
+    }
+
     const size_t triangle_count = mesh.indices.size();
     for (size_t triangle_index = 0; triangle_index < triangle_count; ++triangle_index) {
         if (is_canceled_at_interval(is_canceled, triangle_index))

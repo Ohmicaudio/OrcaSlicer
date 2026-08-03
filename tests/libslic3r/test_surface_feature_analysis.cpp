@@ -183,6 +183,19 @@ TEST_CASE("Surface feature analysis rejects invalid triangle indices", "[Surface
     CHECK(field.ridge_scores.empty());
 }
 
+TEST_CASE("Surface feature analysis rejects non-finite vertex coordinates", "[SurfaceFeatureAnalysis]")
+{
+    indexed_triangle_set mesh = make_two_triangle_plane();
+    mesh.vertices[1].x() = std::numeric_limits<float>::quiet_NaN();
+
+    const SurfaceFeatureField field = analyze_surface_features(mesh, {});
+    CHECK(field.status == SurfaceFeatureAnalysisStatus::InvalidMesh);
+    CHECK(field.valley_scores.empty());
+    CHECK(field.ridge_scores.empty());
+    CHECK(field.triangle_areas_mm2.empty());
+    CHECK(field.triangle_neighbors.empty());
+}
+
 TEST_CASE("Surface feature analysis does not publish partial results when canceled after analysis begins", "[SurfaceFeatureAnalysis]")
 {
     const indexed_triangle_set mesh = make_two_triangle_plane();
