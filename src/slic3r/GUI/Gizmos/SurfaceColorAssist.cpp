@@ -1,7 +1,12 @@
 #include "SurfaceColorAssist.hpp"
 
+#include "slic3r/GUI/3DScene.hpp"
+#include "slic3r/GUI/Camera.hpp"
+#include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/GLShader.hpp"
 #include "slic3r/GUI/Jobs/BoostThreadWorker.hpp"
 #include "slic3r/GUI/Jobs/PlaterWorker.hpp"
+#include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/Jobs/Worker.hpp"
 
 #include <algorithm>
@@ -152,14 +157,34 @@ bool SurfaceColorAssist::is_analyzing() const
     return m_state && m_state->analyzing;
 }
 
-void SurfaceColorAssist::render_preview(const ModelVolume &volume)
+void SurfaceColorAssist::render_preview(const ModelVolume &volume, const Transform3d &world_transform)
 {
     if (!current_field(volume))
         return;
 
     rebuild_preview_bands(volume);
+    GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+    if (shader == nullptr)
+        return;
+
+    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Transform3d view_model_matrix = camera.get_view_matrix() * world_transform;
+    const Matrix3d view_normal_matrix = camera.get_view_matrix().matrix().block(0, 0, 3, 3) *
+        world_transform.matrix().block(0, 0, 3, 3).inverse().transpose();
+    const bool mirrored = world_transform.matrix().determinant() < 0.0;
+
+    shader->start_using();
+    shader->set_uniform("view_model_matrix", view_model_matrix);
+    shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+    shader->set_uniform("view_normal_matrix", view_normal_matrix);
+    shader->set_uniform("emission_factor", 0.10f);
+    if (mirrored)
+        glsafe(::glFrontFace(GL_CW));
     for (GLModel &band : m_state->preview_bands)
         band.render();
+    if (mirrored)
+        glsafe(::glFrontFace(GL_CCW));
+    shader->stop_using();
 }
 
 void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)

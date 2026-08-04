@@ -258,8 +258,10 @@ void GLGizmoMmuSegmentation::render_painter_gizmo()
 
     m_c->object_clipper()->render_cut();
     m_c->instances_hider()->render_cut();
-    if (ModelVolume *volume = get_selected_volume(selection))
-        m_surface_color_assist.render_preview(*volume);
+    if (ModelVolume *volume = get_selected_volume(selection)) {
+        if (const GLVolume *gl_volume = get_selected_gl_volume(selection))
+            m_surface_color_assist.render_preview(*volume, gl_volume->world_matrix());
+    }
     render_cursor();
 
     glsafe(::glDisable(GL_BLEND));

@@ -54,7 +54,7 @@ public:
     bool is_analyzing() const;
 
     // Draws only transient score geometry. This never touches color-paint data.
-    void render_preview(const ModelVolume &volume);
+    void render_preview(const ModelVolume &volume, const Transform3d &world_transform);
 
     const SurfaceColorAssistSettings& settings() const;
     SurfaceColorAssistSettings&       settings();
