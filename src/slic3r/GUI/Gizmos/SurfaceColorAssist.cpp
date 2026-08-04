@@ -8,6 +8,9 @@
 #include "slic3r/GUI/Jobs/PlaterWorker.hpp"
 #include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/Jobs/Worker.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+
+#include <GL/glew.h>
 
 #include <algorithm>
 #include <array>
@@ -32,7 +35,7 @@ struct SurfaceColorAssist::State
 
 SurfaceColorAssist::SurfaceColorAssist(wxWindow *event_owner)
     : m_state(std::make_shared<State>())
-    , m_worker(std::make_unique<PlaterWorker<BoostThreadWorker>>(event_owner, "surface_color_assist"))
+    , m_worker(std::make_unique<PlaterWorker<BoostThreadWorker>>(event_owner, nullptr, "surface_color_assist"))
 {
 }
 
@@ -233,7 +236,7 @@ void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)
             continue;
         const size_t band_idx = std::min<size_t>(PreviewBandCount - 1, size_t(normalized * PreviewBandCount));
         GLModel::Geometry &band = geometry[band_idx];
-        const Vec3i &triangle = its.indices[triangle_idx];
+        const Vec3i32 &triangle = its.indices[triangle_idx];
         const Vec3f &a = its.vertices[triangle[0]];
         const Vec3f &b = its.vertices[triangle[1]];
         const Vec3f &c = its.vertices[triangle[2]];

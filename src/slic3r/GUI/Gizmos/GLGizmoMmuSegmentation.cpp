@@ -16,8 +16,10 @@
 
 
 #include <GL/glew.h>
+#include <wx/glcanvas.h>
 #include <algorithm>
 #include <boost/log/trivial.hpp>
+#include <string>
 
 namespace Slic3r::GUI {
 
@@ -29,6 +31,17 @@ static inline void show_notification_extruders_limit_exceeded()
         ->push_notification(NotificationType::MmSegmentationExceededExtrudersLimit, NotificationManager::NotificationLevel::PrintInfoNotificationLevel,
                             GUI::format(_L("Filament count exceeds the maximum number that painting tool supports. Only the "
                                            "first %1% filaments will be available in painting tool."), GLGizmoMmuSegmentation::EXTRUDERS_LIMIT));
+}
+
+static std::string format_surface_feature_warning(const SurfaceFeatureWarning &warning)
+{
+    const char *label = "Surface analysis warning";
+    switch (warning.code) {
+    case SurfaceFeatureWarning::Code::BoundaryEdge:       label = "Boundary edge"; break;
+    case SurfaceFeatureWarning::Code::NonManifoldEdge:    label = "Non-manifold edge"; break;
+    case SurfaceFeatureWarning::Code::DegenerateTriangle: label = "Degenerate triangle"; break;
+    }
+    return std::string(label) + " at triangle " + std::to_string(warning.triangle_index);
 }
 
 // --- Gradient rendering helpers (ported from MixedFilamentBadge) ---
@@ -243,7 +256,7 @@ bool GLGizmoMmuSegmentation::on_init()
 GLGizmoMmuSegmentation::GLGizmoMmuSegmentation(GLCanvas3D& parent, const std::string& icon_filename, unsigned int sprite_id)
     : GLGizmoPainterBase(parent, icon_filename, sprite_id)
     , m_current_tool(ImGui::CircleButtonIcon)
-    , m_surface_color_assist(&parent)
+    , m_surface_color_assist(parent.get_wxglcanvas())
 {
 }
 
@@ -919,16 +932,18 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             if (ImGui::Button("Cancel##surface_color_assist"))
                 m_surface_color_assist.cancel();
         } else {
-            ImGui::BeginDisabled(selected_volume == nullptr);
-            if (ImGui::Button("Analyze##surface_color_assist"))
+            if (selected_volume == nullptr)
+                ImGui::TextDisabled("Select a volume to analyze.");
+            else if (ImGui::Button("Analyze##surface_color_assist"))
                 m_surface_color_assist.analyze_current_volume();
-            ImGui::EndDisabled();
         }
 
         if (selected_volume != nullptr) {
             if (const SurfaceFeatureField *field = m_surface_color_assist.current_field(*selected_volume)) {
-                for (const std::string &warning : field->warnings)
-                    ImGui::TextWrapped("%s", warning.c_str());
+                for (const SurfaceFeatureWarning &warning : field->warnings) {
+                    const std::string message = format_surface_feature_warning(warning);
+                    ImGui::TextWrapped("%s", message.c_str());
+                }
             }
         }
         ImGui::TextDisabled("Preview only. No color paint is applied.");
