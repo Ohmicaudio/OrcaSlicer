@@ -260,8 +260,22 @@ GLGizmoMmuSegmentation::GLGizmoMmuSegmentation(GLCanvas3D& parent, const std::st
 {
 }
 
+void GLGizmoMmuSegmentation::on_render()
+{
+    m_surface_color_assist.process_events();
+    const Selection& selection = m_parent.get_selection();
+    if (ModelVolume *volume = get_selected_volume(selection)) {
+        if (const GLVolume *gl_volume = get_selected_gl_volume(selection))
+            m_surface_color_assist.render_preview(*volume, gl_volume->world_matrix());
+    }
+}
+
 void GLGizmoMmuSegmentation::render_painter_gizmo()
 {
+    // The assist owns a dedicated worker. Pump its completion queue on the
+    // canvas thread so completed analysis can update the preview state.
+    m_surface_color_assist.process_events();
+
     const Selection& selection = m_parent.get_selection();
 
     glsafe(::glEnable(GL_BLEND));
@@ -271,10 +285,6 @@ void GLGizmoMmuSegmentation::render_painter_gizmo()
 
     m_c->object_clipper()->render_cut();
     m_c->instances_hider()->render_cut();
-    if (ModelVolume *volume = get_selected_volume(selection)) {
-        if (const GLVolume *gl_volume = get_selected_gl_volume(selection))
-            m_surface_color_assist.render_preview(*volume, gl_volume->world_matrix());
-    }
     render_cursor();
 
     glsafe(::glDisable(GL_BLEND));
@@ -916,10 +926,12 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
 
     if (ImGui::CollapsingHeader(_u8L("Surface Color Assist").c_str())) {
         SurfaceColorAssistSettings &assist_settings = m_surface_color_assist.settings();
-        int mode = assist_settings.mode == SurfaceFeatureMode::Valleys ? 0 : 1;
-        const char *modes[] = { "Valleys", "Ridges" };
+        int mode = assist_settings.mode == SurfaceFeatureMode::Both ? 0 :
+                   assist_settings.mode == SurfaceFeatureMode::Valleys ? 1 : 2;
+        const char *modes[] = { "Surface deviations", "Valleys", "Ridges" };
         if (ImGui::Combo("Mode", &mode, modes, IM_ARRAYSIZE(modes)))
-            assist_settings.mode = mode == 0 ? SurfaceFeatureMode::Valleys : SurfaceFeatureMode::Ridges;
+            assist_settings.mode = mode == 0 ? SurfaceFeatureMode::Both :
+                                   mode == 1 ? SurfaceFeatureMode::Valleys : SurfaceFeatureMode::Ridges;
 
         ImGui::DragFloat("Analysis radius", &assist_settings.analysis_radius_mm, 0.05f, 0.05f, 20.0f, "%.2f mm");
         ImGui::DragFloat("Threshold", &assist_settings.threshold, 0.01f, 0.0f, 1.0f, "%.2f");
@@ -940,6 +952,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
 
         if (selected_volume != nullptr) {
             if (const SurfaceFeatureField *field = m_surface_color_assist.current_field(*selected_volume)) {
+                ImGui::TextUnformatted("Analysis complete.");
                 for (const SurfaceFeatureWarning &warning : field->warnings) {
                     const std::string message = format_surface_feature_warning(warning);
                     ImGui::TextWrapped("%s", message.c_str());

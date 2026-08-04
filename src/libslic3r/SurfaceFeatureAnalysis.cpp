@@ -138,7 +138,12 @@ SurfaceFeatureField analyze_surface_features(
         }
     }
 
-    const size_t triangle_count = mesh.indices.size();
+    // Binary STL commonly duplicates a coordinate for every triangle. Build
+    // shared topology for scoring only; the source mesh remains untouched.
+    indexed_triangle_set topology = mesh;
+    its_merge_vertices(topology);
+
+    const size_t triangle_count = topology.indices.size();
     for (size_t triangle_index = 0; triangle_index < triangle_count; ++triangle_index) {
         if (is_canceled_at_interval(is_canceled, triangle_index))
             return canceled_field();
@@ -167,10 +172,10 @@ SurfaceFeatureField analyze_surface_features(
         if (is_canceled_at_interval(is_canceled, triangle_index))
             return canceled_field();
 
-        const stl_triangle_vertex_indices &triangle = mesh.indices[triangle_index];
-        const Vec3f &first = mesh.vertices[triangle[0]];
-        const Vec3f &second = mesh.vertices[triangle[1]];
-        const Vec3f &third = mesh.vertices[triangle[2]];
+        const stl_triangle_vertex_indices &triangle = topology.indices[triangle_index];
+        const Vec3f &first = topology.vertices[triangle[0]];
+        const Vec3f &second = topology.vertices[triangle[1]];
+        const Vec3f &third = topology.vertices[triangle[2]];
         const Vec3f normal = (second - first).cross(third - first);
         const float doubled_area = normal.norm();
 
@@ -227,8 +232,8 @@ SurfaceFeatureField analyze_surface_features(
             field.triangle_neighbors[second_triangle].push_back(first_triangle);
 
             if (field.triangle_areas_mm2[first_triangle] > 0.0f && field.triangle_areas_mm2[second_triangle] > 0.0f) {
-                const Vec3f edge_direction = (mesh.vertices[first_use.edge.second] - mesh.vertices[first_use.edge.first]).normalized();
-                const float edge_length = (mesh.vertices[first_use.edge.second] - mesh.vertices[first_use.edge.first]).norm();
+                const Vec3f edge_direction = (topology.vertices[first_use.edge.second] - topology.vertices[first_use.edge.first]).normalized();
+                const float edge_length = (topology.vertices[first_use.edge.second] - topology.vertices[first_use.edge.first]).norm();
                 if (edge_length > 0.0f) {
                     total_valid_edge_length += edge_length;
                     ++valid_edge_count;
@@ -242,8 +247,11 @@ SurfaceFeatureField analyze_surface_features(
                     field.valley_scores[first_triangle] += score;
                     field.valley_scores[second_triangle] += score;
                 } else if (signed_bend > 0.0f) {
-                    field.ridge_scores[first_triangle] += score;
-                    field.ridge_scores[second_triangle] += score;
+                    // A broad convex form contains many small positive bends.
+                    // Accumulating them makes it look like one large ridge;
+                    // retain only the sharpest local convex edge instead.
+                    field.ridge_scores[first_triangle] = std::max(field.ridge_scores[first_triangle], score);
+                    field.ridge_scores[second_triangle] = std::max(field.ridge_scores[second_triangle], score);
                 }
             }
         } else {
@@ -277,8 +285,9 @@ SurfaceFeatureField analyze_surface_features(
         std::ceil(requested_radius_mm / smoothing_step_mm),
         double(options.smoothing_pass_limit));
     const unsigned passes = static_cast<unsigned>(bounded_pass_count);
+    const unsigned ridge_passes = std::min(passes, options.ridge_smoothing_pass_limit);
     if (!smooth_scores(field.valley_scores, field.triangle_neighbors, passes, is_canceled)
-        || !smooth_scores(field.ridge_scores, field.triangle_neighbors, passes, is_canceled))
+        || !smooth_scores(field.ridge_scores, field.triangle_neighbors, ridge_passes, is_canceled))
         return canceled_field();
 
     if (should_cancel(is_canceled))
@@ -293,17 +302,32 @@ std::vector<size_t> select_surface_feature_triangles(
     float threshold,
     float min_patch_area_mm2)
 {
-    const std::vector<float> &scores = mode == SurfaceFeatureMode::Valleys ? field.valley_scores : field.ridge_scores;
+    const size_t score_count = mode == SurfaceFeatureMode::Ridges ?
+        field.ridge_scores.size() : field.valley_scores.size();
+    const bool needs_ridge_scores = mode == SurfaceFeatureMode::Both;
     if (field.status != SurfaceFeatureAnalysisStatus::Complete
-        || field.triangle_areas_mm2.size() != scores.size()
-        || field.triangle_neighbors.size() != scores.size())
+        || (needs_ridge_scores && field.ridge_scores.size() != score_count)
+        || field.triangle_areas_mm2.size() != score_count
+        || field.triangle_neighbors.size() != score_count)
         return {};
 
+    const auto score_at = [&field, mode](size_t triangle_index) {
+        switch (mode) {
+        case SurfaceFeatureMode::Both:
+            return std::max(field.valley_scores[triangle_index], field.ridge_scores[triangle_index]);
+        case SurfaceFeatureMode::Valleys:
+            return field.valley_scores[triangle_index];
+        case SurfaceFeatureMode::Ridges:
+            return field.ridge_scores[triangle_index];
+        }
+        return 0.0f;
+    };
+
     const float minimum_area = std::max(0.0f, min_patch_area_mm2);
-    std::vector<bool> visited(scores.size(), false);
+    std::vector<bool> visited(score_count, false);
     std::vector<size_t> selected;
-    for (size_t triangle_index = 0; triangle_index < scores.size(); ++triangle_index) {
-        if (visited[triangle_index] || scores[triangle_index] < threshold)
+    for (size_t triangle_index = 0; triangle_index < score_count; ++triangle_index) {
+        if (visited[triangle_index] || score_at(triangle_index) < threshold)
             continue;
 
         std::vector<size_t> component { triangle_index };
@@ -313,7 +337,7 @@ std::vector<size_t> select_surface_feature_triangles(
             const size_t current = component[component_index];
             component_area += field.triangle_areas_mm2[current];
             for (size_t neighbor : field.triangle_neighbors[current]) {
-                if (neighbor < scores.size() && !visited[neighbor] && scores[neighbor] >= threshold) {
+                if (neighbor < score_count && !visited[neighbor] && score_at(neighbor) >= threshold) {
                     visited[neighbor] = true;
                     component.push_back(neighbor);
                 }
@@ -335,7 +359,7 @@ std::optional<size_t> suggest_surface_feature_filament(
     if (base_filament >= palette.size() || !is_usable_color(palette[base_filament]))
         return std::nullopt;
 
-    constexpr float minimum_contrast = 0.20f;
+    constexpr float minimum_contrast = 0.10f;
     const float base_luminance = relative_luminance(palette[base_filament]);
     std::optional<size_t> suggestion;
     float best_luminance = mode == SurfaceFeatureMode::Valleys

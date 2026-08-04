@@ -28,7 +28,7 @@ struct SurfaceColorAssist::State
     bool analyzing { false };
     std::array<GLModel, PreviewBandCount> preview_bands;
     std::optional<SurfaceColorAssistKey> preview_key;
-    SurfaceFeatureMode preview_mode { SurfaceFeatureMode::Valleys };
+    SurfaceFeatureMode preview_mode { SurfaceFeatureMode::Both };
     float preview_threshold { -1.0f };
     float preview_falloff { -1.0f };
 };
@@ -121,10 +121,16 @@ void SurfaceColorAssist::clear()
     cancel();
 }
 
+void SurfaceColorAssist::process_events()
+{
+    if (m_worker)
+        m_worker->process_events();
+}
+
 SurfaceColorAssistKey SurfaceColorAssist::make_key(const ModelVolume &volume) const
 {
     const auto mesh = volume.get_mesh_shared_ptr();
-    return { mesh, volume.get_matrix(), mesh ? mesh->its.indices.size() / 3 : 0 };
+    return { mesh, volume.get_matrix(), mesh ? mesh->its.indices.size() : 0 };
 }
 
 bool SurfaceColorAssist::keys_match(const SurfaceColorAssistKey &lhs, const SurfaceColorAssistKey &rhs)
@@ -219,18 +225,52 @@ void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)
         band.reset();
 
     const indexed_triangle_set &its = key.mesh->its;
-    const std::vector<float> &scores = settings.mode == SurfaceFeatureMode::Valleys ?
-        field->valley_scores : field->ridge_scores;
-    if (scores.size() != its.indices.size() / 3)
+    const size_t score_count = field->valley_scores.size();
+    if (field->ridge_scores.size() != score_count || score_count != its.indices.size())
         return;
+
+    const auto score_at = [field, mode = settings.mode](size_t triangle_index) {
+        switch (mode) {
+        case SurfaceFeatureMode::Both:
+            return std::max(field->valley_scores[triangle_index], field->ridge_scores[triangle_index]);
+        case SurfaceFeatureMode::Valleys:
+            return field->valley_scores[triangle_index];
+        case SurfaceFeatureMode::Ridges:
+            return field->ridge_scores[triangle_index];
+        }
+        return 0.0f;
+    };
 
     std::array<GLModel::Geometry, PreviewBandCount> geometry;
     for (GLModel::Geometry &band : geometry)
         band.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3 };
 
-    const float denominator = std::max(2.0f * settings.preview_falloff, 0.001f);
-    for (size_t triangle_idx = 0; triangle_idx < scores.size(); ++triangle_idx) {
-        const float normalized = std::clamp((scores[triangle_idx] - (settings.threshold - settings.preview_falloff)) /
+    float selection_floor = std::max(0.0f, settings.threshold - settings.preview_falloff);
+    float max_score = 0.0f;
+    for (size_t triangle_idx = 0; triangle_idx < score_count; ++triangle_idx)
+        max_score = std::max(max_score, score_at(triangle_idx));
+    float denominator = std::max(2.0f * settings.preview_falloff, 0.001f);
+    if (max_score > 0.0f && max_score < selection_floor) {
+        // A score field's magnitude varies with tessellation and smoothing.
+        // Preserve an explicit user threshold when it selects anything, but
+        // show a bounded relative preview instead of an empty result otherwise.
+        selection_floor = max_score * 0.25f;
+        denominator = std::max(max_score - selection_floor, 0.001f);
+    }
+
+    // Keep only connected feature regions of useful physical area. Rendering
+    // raw qualifying facets makes dense STL tessellation read as visual noise.
+    const std::vector<size_t> selected_triangles = select_surface_feature_triangles(
+        *field, settings.mode, selection_floor, settings.min_patch_area_mm2);
+    std::vector<bool> selected(score_count, false);
+    for (const size_t triangle_idx : selected_triangles) {
+        if (triangle_idx < selected.size())
+            selected[triangle_idx] = true;
+    }
+    for (size_t triangle_idx = 0; triangle_idx < score_count; ++triangle_idx) {
+        if (!selected[triangle_idx])
+            continue;
+        const float normalized = std::clamp((score_at(triangle_idx) - selection_floor) /
                                                 denominator, 0.0f, 1.0f);
         if (normalized <= 0.0f)
             continue;

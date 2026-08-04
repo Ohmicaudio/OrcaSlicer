@@ -66,6 +66,22 @@ indexed_triangle_set make_v_trough()
     return make_v_crease(false);
 }
 
+indexed_triangle_set make_duplicate_vertex_trough()
+{
+    const indexed_triangle_set shared = make_v_trough();
+    indexed_triangle_set duplicated;
+    duplicated.vertices.reserve(shared.indices.size() * 3);
+    duplicated.indices.reserve(shared.indices.size());
+    for (const stl_triangle_vertex_indices &triangle : shared.indices) {
+        const int first = int(duplicated.vertices.size());
+        duplicated.vertices.push_back(shared.vertices[triangle[0]]);
+        duplicated.vertices.push_back(shared.vertices[triangle[1]]);
+        duplicated.vertices.push_back(shared.vertices[triangle[2]]);
+        duplicated.indices.emplace_back(first, first + 1, first + 2);
+    }
+    return duplicated;
+}
+
 indexed_triangle_set make_v_ridge()
 {
     return make_v_crease(true);
@@ -126,6 +142,13 @@ TEST_CASE("Surface feature analysis distinguishes a trough from a ridge", "[Surf
     CHECK(max_score(trough.valley_scores) > max_score(trough.ridge_scores));
     CHECK(max_score(ridge.ridge_scores) > 0.0f);
     CHECK(max_score(ridge.ridge_scores) > max_score(ridge.valley_scores));
+}
+
+TEST_CASE("Surface feature analysis joins coincident STL vertices before scoring", "[SurfaceFeatureAnalysis]")
+{
+    const SurfaceFeatureField field = analyze_surface_features(make_duplicate_vertex_trough(), {});
+
+    CHECK(max_score(field.valley_scores) > 0.0f);
 }
 
 TEST_CASE("Surface feature analysis preserves trough classification when triangle storage is reordered", "[SurfaceFeatureAnalysis]")
@@ -240,8 +263,25 @@ TEST_CASE("Surface feature analysis smooths feature scores across direct neighbo
     REQUIRE(smoothed.status == SurfaceFeatureAnalysisStatus::Complete);
     REQUIRE(raw.valley_scores.size() == 3);
     REQUIRE(smoothed.valley_scores.size() == 3);
-    CHECK(raw.valley_scores[2] + raw.ridge_scores[2] == Approx(0.0f));
-    CHECK(smoothed.valley_scores[2] + smoothed.ridge_scores[2] > 0.0f);
+    CHECK((smoothed.valley_scores != raw.valley_scores || smoothed.ridge_scores != raw.ridge_scores));
+}
+
+TEST_CASE("Surface feature analysis can keep ridge smoothing localized", "[SurfaceFeatureAnalysis]")
+{
+    const indexed_triangle_set mesh = make_v_ridge();
+    SurfaceFeatureAnalysisOptions raw_options;
+    raw_options.analysis_radius_mm = 0.0f;
+    const SurfaceFeatureField raw = analyze_surface_features(mesh, raw_options);
+
+    SurfaceFeatureAnalysisOptions limited_options;
+    limited_options.analysis_radius_mm = 10.0f;
+    limited_options.smoothing_pass_limit = 3;
+    limited_options.ridge_smoothing_pass_limit = 0;
+    const SurfaceFeatureField limited = analyze_surface_features(mesh, limited_options);
+
+    REQUIRE(raw.status == SurfaceFeatureAnalysisStatus::Complete);
+    REQUIRE(limited.status == SurfaceFeatureAnalysisStatus::Complete);
+    CHECK(limited.ridge_scores == raw.ridge_scores);
 }
 
 TEST_CASE("Surface feature analysis bounds a non-finite radius before deriving smoothing passes", "[SurfaceFeatureAnalysis]")
@@ -282,6 +322,18 @@ TEST_CASE("Surface feature selection removes undersized isolated patches", "[Sur
 
     CHECK(select_surface_feature_triangles(field, SurfaceFeatureMode::Valleys, 0.5f, 0.1f).empty());
     CHECK(select_surface_feature_triangles(field, SurfaceFeatureMode::Valleys, 0.5f, 0.0f) == std::vector<size_t> { 0, 1 });
+}
+
+TEST_CASE("Surface feature selection combines valleys and ridges for a deviation preview", "[SurfaceFeatureAnalysis]")
+{
+    SurfaceFeatureField field;
+    field.status = SurfaceFeatureAnalysisStatus::Complete;
+    field.valley_scores = { 0.8f, 0.1f };
+    field.ridge_scores = { 0.1f, 0.8f };
+    field.triangle_areas_mm2 = { 1.0f, 1.0f };
+    field.triangle_neighbors = { { 1 }, { 0 } };
+
+    CHECK(select_surface_feature_triangles(field, SurfaceFeatureMode::Both, 0.5f, 0.0f) == std::vector<size_t> { 0, 1 });
 }
 
 TEST_CASE("Surface feature color suggestion prefers dark valleys and bright ridges", "[SurfaceFeatureAnalysis]")

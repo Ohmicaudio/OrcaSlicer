@@ -12,6 +12,7 @@
 namespace Slic3r {
 
 enum class SurfaceFeatureMode {
+    Both,
     Valleys,
     Ridges
 };
@@ -27,6 +28,9 @@ struct SurfaceFeatureAnalysisOptions
     float analysis_radius_mm { 1.0f };
     float min_patch_area_mm2 { 0.25f };
     unsigned smoothing_pass_limit { 6 };
+    // Convex surface variation spreads visually much faster than concave
+    // recesses on dense organic meshes, so keep ridge smoothing tighter.
+    unsigned ridge_smoothing_pass_limit { 2 };
 };
 
 struct SurfaceFeatureColor

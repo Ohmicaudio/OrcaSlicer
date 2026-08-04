@@ -26,9 +26,11 @@ struct SurfaceColorAssistKey
 
 struct SurfaceColorAssistSettings
 {
-    SurfaceFeatureMode  mode { SurfaceFeatureMode::Valleys };
-    float               threshold { 0.50f };
-    float               preview_falloff { 0.15f };
+    SurfaceFeatureMode  mode { SurfaceFeatureMode::Both };
+    // Dense organic meshes have mostly shallow dihedral changes. Start with a
+    // soft threshold that reveals useful variation rather than only hard edges.
+    float               threshold { 0.12f };
+    float               preview_falloff { 0.08f };
     float               analysis_radius_mm { 1.0f };
     float               min_patch_area_mm2 { 0.25f };
     std::optional<size_t> target_filament;
@@ -51,6 +53,8 @@ public:
     bool analyze_current_volume();
     void cancel();
     void clear();
+    // Delivers background-analysis completion on the GUI thread.
+    void process_events();
     bool is_analyzing() const;
 
     // Draws only transient score geometry. This never touches color-paint data.

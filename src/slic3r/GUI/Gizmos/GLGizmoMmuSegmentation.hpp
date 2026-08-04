@@ -83,6 +83,8 @@ public:
     bool on_key_down_select_tool_type(int keyCode);
 
 protected:
+    void on_render() override;
+
     // BBS
     ColorRGBA get_cursor_hover_color() const override;
     void on_set_state() override;
