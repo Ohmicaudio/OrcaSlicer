@@ -172,18 +172,29 @@ void SurfaceColorAssist::render_preview(const ModelVolume &volume, const Transfo
     const Matrix3d view_normal_matrix = camera.get_view_matrix().matrix().block(0, 0, 3, 3) *
         world_transform.matrix().block(0, 0, 3, 3).inverse().transpose();
     const bool mirrored = world_transform.matrix().determinant() < 0.0;
+    GLint previous_depth_func = GL_LESS;
+    GLint previous_front_face = GL_CCW;
+    GLboolean previous_depth_mask = GL_TRUE;
+    glsafe(::glGetIntegerv(GL_DEPTH_FUNC, &previous_depth_func));
+    glsafe(::glGetIntegerv(GL_FRONT_FACE, &previous_front_face));
+    glsafe(::glGetBooleanv(GL_DEPTH_WRITEMASK, &previous_depth_mask));
 
     shader->start_using();
     shader->set_uniform("view_model_matrix", view_model_matrix);
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
     shader->set_uniform("view_normal_matrix", view_normal_matrix);
     shader->set_uniform("emission_factor", 0.10f);
+    // The bands reuse the model's exact triangles: permit equal depth but do not
+    // let a translucent preview change the depth buffer seen by the cursor.
+    glsafe(::glDepthFunc(GL_LEQUAL));
+    glsafe(::glDepthMask(GL_FALSE));
     if (mirrored)
         glsafe(::glFrontFace(GL_CW));
     for (GLModel &band : m_state->preview_bands)
         band.render();
-    if (mirrored)
-        glsafe(::glFrontFace(GL_CCW));
+    glsafe(::glFrontFace(previous_front_face));
+    glsafe(::glDepthMask(previous_depth_mask));
+    glsafe(::glDepthFunc(previous_depth_func));
     shader->stop_using();
 }
 
