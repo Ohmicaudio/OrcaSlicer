@@ -63,6 +63,8 @@ public:
     const SurfaceColorAssistSettings& settings() const;
     SurfaceColorAssistSettings&       settings();
     const SurfaceFeatureField*        current_field(const ModelVolume &volume) const;
+    // Returns the exact original mesh facets currently represented by preview bands.
+    std::vector<size_t>               selected_triangles(const ModelVolume &volume) const;
 
 private:
     struct State;

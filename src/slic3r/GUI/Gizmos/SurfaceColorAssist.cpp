@@ -18,6 +18,36 @@
 
 namespace Slic3r::GUI {
 
+namespace {
+
+float score_for_triangle(const SurfaceFeatureField &field, SurfaceFeatureMode mode, size_t triangle_index)
+{
+    switch (mode) {
+    case SurfaceFeatureMode::Both:
+        return std::max(field.valley_scores[triangle_index], field.ridge_scores[triangle_index]);
+    case SurfaceFeatureMode::Valleys:
+        return field.valley_scores[triangle_index];
+    case SurfaceFeatureMode::Ridges:
+        return field.ridge_scores[triangle_index];
+    }
+    return 0.0f;
+}
+
+float preview_selection_floor(const SurfaceFeatureField &field, const SurfaceColorAssistSettings &settings)
+{
+    float selection_floor = std::max(0.0f, settings.threshold - settings.preview_falloff);
+    float max_score = 0.0f;
+    for (size_t triangle_idx = 0; triangle_idx < field.valley_scores.size(); ++triangle_idx)
+        max_score = std::max(max_score, score_for_triangle(field, settings.mode, triangle_idx));
+
+    if (max_score > 0.0f && max_score < selection_floor)
+        selection_floor = max_score * 0.25f;
+
+    return selection_floor;
+}
+
+} // namespace
+
 struct SurfaceColorAssist::State
 {
     std::optional<SurfaceColorAssistKey> current_key;
@@ -184,24 +214,34 @@ void SurfaceColorAssist::render_preview(const ModelVolume &volume, const Transfo
     GLint previous_depth_func = GL_LESS;
     GLint previous_front_face = GL_CCW;
     GLboolean previous_depth_mask = GL_TRUE;
+    const GLboolean polygon_offset_was_enabled = glIsEnabled(GL_POLYGON_OFFSET_FILL);
+    GLfloat previous_polygon_offset_factor = 0.0f;
+    GLfloat previous_polygon_offset_units = 0.0f;
     glsafe(::glGetIntegerv(GL_DEPTH_FUNC, &previous_depth_func));
     glsafe(::glGetIntegerv(GL_FRONT_FACE, &previous_front_face));
     glsafe(::glGetBooleanv(GL_DEPTH_WRITEMASK, &previous_depth_mask));
+    glsafe(::glGetFloatv(GL_POLYGON_OFFSET_FACTOR, &previous_polygon_offset_factor));
+    glsafe(::glGetFloatv(GL_POLYGON_OFFSET_UNITS, &previous_polygon_offset_units));
 
     shader->start_using();
     shader->set_uniform("view_model_matrix", view_model_matrix);
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
     shader->set_uniform("view_normal_matrix", view_normal_matrix);
     shader->set_uniform("emission_factor", 0.10f);
-    // The bands reuse the model's exact triangles: permit equal depth but do not
-    // let a translucent preview change the depth buffer seen by the cursor.
+    // The bands reuse the model's exact triangles. Offset them slightly toward
+    // the camera to avoid rotation-dependent coplanar depth flicker.
     glsafe(::glDepthFunc(GL_LEQUAL));
     glsafe(::glDepthMask(GL_FALSE));
+    glsafe(::glEnable(GL_POLYGON_OFFSET_FILL));
+    glsafe(::glPolygonOffset(-1.0f, -1.0f));
     if (mirrored)
         glsafe(::glFrontFace(GL_CW));
     for (GLModel &band : m_state->preview_bands)
         band.render();
     glsafe(::glFrontFace(previous_front_face));
+    glsafe(::glPolygonOffset(previous_polygon_offset_factor, previous_polygon_offset_units));
+    if (!polygon_offset_was_enabled)
+        glsafe(::glDisable(GL_POLYGON_OFFSET_FILL));
     glsafe(::glDepthMask(previous_depth_mask));
     glsafe(::glDepthFunc(previous_depth_func));
     shader->stop_using();
@@ -229,32 +269,19 @@ void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)
     if (field->ridge_scores.size() != score_count || score_count != its.indices.size())
         return;
 
-    const auto score_at = [field, mode = settings.mode](size_t triangle_index) {
-        switch (mode) {
-        case SurfaceFeatureMode::Both:
-            return std::max(field->valley_scores[triangle_index], field->ridge_scores[triangle_index]);
-        case SurfaceFeatureMode::Valleys:
-            return field->valley_scores[triangle_index];
-        case SurfaceFeatureMode::Ridges:
-            return field->ridge_scores[triangle_index];
-        }
-        return 0.0f;
-    };
-
     std::array<GLModel::Geometry, PreviewBandCount> geometry;
     for (GLModel::Geometry &band : geometry)
         band.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3 };
 
-    float selection_floor = std::max(0.0f, settings.threshold - settings.preview_falloff);
+    const float selection_floor = preview_selection_floor(*field, settings);
     float max_score = 0.0f;
     for (size_t triangle_idx = 0; triangle_idx < score_count; ++triangle_idx)
-        max_score = std::max(max_score, score_at(triangle_idx));
+        max_score = std::max(max_score, score_for_triangle(*field, settings.mode, triangle_idx));
     float denominator = std::max(2.0f * settings.preview_falloff, 0.001f);
-    if (max_score > 0.0f && max_score < selection_floor) {
+    if (max_score > 0.0f && max_score < std::max(0.0f, settings.threshold - settings.preview_falloff)) {
         // A score field's magnitude varies with tessellation and smoothing.
         // Preserve an explicit user threshold when it selects anything, but
         // show a bounded relative preview instead of an empty result otherwise.
-        selection_floor = max_score * 0.25f;
         denominator = std::max(max_score - selection_floor, 0.001f);
     }
 
@@ -270,7 +297,7 @@ void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)
     for (size_t triangle_idx = 0; triangle_idx < score_count; ++triangle_idx) {
         if (!selected[triangle_idx])
             continue;
-        const float normalized = std::clamp((score_at(triangle_idx) - selection_floor) /
+        const float normalized = std::clamp((score_for_triangle(*field, settings.mode, triangle_idx) - selection_floor) /
                                                 denominator, 0.0f, 1.0f);
         if (normalized <= 0.0f)
             continue;
@@ -315,6 +342,17 @@ const SurfaceFeatureField* SurfaceColorAssist::current_field(const ModelVolume &
         return nullptr;
 
     return &*m_state->field;
+}
+
+std::vector<size_t> SurfaceColorAssist::selected_triangles(const ModelVolume &volume) const
+{
+    const SurfaceFeatureField *field = current_field(volume);
+    if (field == nullptr)
+        return {};
+
+    return select_surface_feature_triangles(*field, m_state->settings.mode,
+                                            preview_selection_floor(*field, m_state->settings),
+                                            m_state->settings.min_patch_area_mm2);
 }
 
 } // namespace Slic3r::GUI

@@ -933,10 +933,37 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             assist_settings.mode = mode == 0 ? SurfaceFeatureMode::Both :
                                    mode == 1 ? SurfaceFeatureMode::Valleys : SurfaceFeatureMode::Ridges;
 
-        ImGui::DragFloat("Analysis radius", &assist_settings.analysis_radius_mm, 0.05f, 0.05f, 20.0f, "%.2f mm");
-        ImGui::DragFloat("Threshold", &assist_settings.threshold, 0.01f, 0.0f, 1.0f, "%.2f");
-        ImGui::DragFloat("Preview falloff", &assist_settings.preview_falloff, 0.01f, 0.01f, 1.0f, "%.2f");
-        ImGui::DragFloat("Minimum patch area", &assist_settings.min_patch_area_mm2, 0.01f, 0.0f, 1000.0f, "%.2f mm2");
+        const auto render_assist_control = [this, sliders_left_width, sliders_width, drag_left_width, slider_icon_width]
+            (const char *label, const char *minus_id, const char *slider_id, const char *plus_id,
+             const char *input_id, float *value,
+             float minimum, float maximum, const char *format) {
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(label);
+                ImGui::SameLine(sliders_left_width);
+                const float nudge_button_width = ImGui::GetFrameHeight();
+                const float slider_width = std::max(40.0f,
+                    sliders_width - 2.0f * nudge_button_width - 2.0f * ImGui::GetStyle().ItemSpacing.x);
+                if (ImGui::Button(minus_id, ImVec2(nudge_button_width, 0.0f)))
+                    *value = std::max(minimum, *value - 0.01f);
+                ImGui::SameLine();
+                ImGui::PushItemWidth(slider_width);
+                m_imgui->bbl_slider_float_style(slider_id, value, minimum, maximum, format, 1.0f, true);
+                ImGui::SameLine();
+                if (ImGui::Button(plus_id, ImVec2(nudge_button_width, 0.0f)))
+                    *value = std::min(maximum, *value + 0.01f);
+                ImGui::SameLine(drag_left_width + sliders_left_width);
+                ImGui::PushItemWidth(1.5f * slider_icon_width);
+                ImGui::BBLDragFloat(input_id, value, 0.01f, 0.0f, 0.0f, format);
+            };
+
+        render_assist_control("Analysis radius", "-##surface_color_assist_radius", "##surface_color_assist_radius", "+##surface_color_assist_radius", "##surface_color_assist_radius_input",
+                              &assist_settings.analysis_radius_mm, 0.05f, 20.0f, "%.2f mm");
+        render_assist_control("Threshold", "-##surface_color_assist_threshold", "##surface_color_assist_threshold", "+##surface_color_assist_threshold", "##surface_color_assist_threshold_input",
+                              &assist_settings.threshold, 0.0f, 1.0f, "%.2f");
+        render_assist_control("Preview falloff", "-##surface_color_assist_falloff", "##surface_color_assist_falloff", "+##surface_color_assist_falloff", "##surface_color_assist_falloff_input",
+                              &assist_settings.preview_falloff, 0.01f, 1.0f, "%.2f");
+        render_assist_control("Minimum patch area", "-##surface_color_assist_patch_area", "##surface_color_assist_patch_area", "+##surface_color_assist_patch_area", "##surface_color_assist_patch_area_input",
+                              &assist_settings.min_patch_area_mm2, 0.0f, 100.0f, "%.2f mm2");
 
         if (m_surface_color_assist.is_analyzing()) {
             ImGui::TextUnformatted("Analyzing selected volume...");
@@ -957,9 +984,42 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                     const std::string message = format_surface_feature_warning(warning);
                     ImGui::TextWrapped("%s", message.c_str());
                 }
+
+                const std::vector<size_t> selected_triangles = m_surface_color_assist.selected_triangles(*selected_volume);
+                if (selected_triangles.empty()) {
+                    ImGui::TextDisabled("No facets match the current preview settings.");
+                } else if (ImGui::Button("Apply to selected filament##surface_color_assist")) {
+                    ModelObject *model_object = m_c->selection_info()->model_object();
+                    size_t selector_idx = 0;
+                    bool found_selector = false;
+                    for (ModelVolume *volume : model_object->volumes) {
+                        if (!volume->is_model_part())
+                            continue;
+                        if (volume == selected_volume) {
+                            found_selector = selector_idx < m_triangle_selectors.size();
+                            break;
+                        }
+                        ++selector_idx;
+                    }
+
+                    const unsigned int filament_id = m_selected_extruder_idx < m_display_filament_ids.size() ?
+                        m_display_filament_ids[m_selected_extruder_idx] : unsigned(m_selected_extruder_idx + 1);
+                    if (found_selector && filament_id >= 1 && filament_id <= size_t(EnforcerBlockerType::ExtruderMax)) {
+                        Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Apply surface color assist", UndoRedo::SnapshotType::GizmoAction);
+                        const EnforcerBlockerType state = static_cast<EnforcerBlockerType>(
+                            static_cast<int>(EnforcerBlockerType::Extruder1) + int(filament_id) - 1);
+                        for (const size_t triangle_idx : selected_triangles)
+                            m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(triangle_idx), state);
+                        m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                        assist_settings.target_filament = filament_id;
+                        update_model_object();
+                        m_parent.set_as_dirty();
+                        m_surface_color_assist.clear();
+                    }
+                }
             }
         }
-        ImGui::TextDisabled("Preview only. No color paint is applied.");
+        ImGui::TextDisabled("Apply writes standard color-paint facets. Undo returns the model to its prior state.");
     }
 
     ImGui::Separator();
