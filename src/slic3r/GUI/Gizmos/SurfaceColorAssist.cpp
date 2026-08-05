@@ -46,6 +46,19 @@ float preview_selection_floor(const SurfaceFeatureField &field, const SurfaceCol
     return selection_floor;
 }
 
+float preview_score_denominator(const SurfaceFeatureField &field, const SurfaceColorAssistSettings &settings,
+                                float selection_floor)
+{
+    float max_score = 0.0f;
+    for (size_t triangle_idx = 0; triangle_idx < field.valley_scores.size(); ++triangle_idx)
+        max_score = std::max(max_score, score_for_triangle(field, settings.mode, triangle_idx));
+
+    float denominator = std::max(2.0f * settings.preview_falloff, 0.001f);
+    if (max_score > 0.0f && max_score < std::max(0.0f, settings.threshold - settings.preview_falloff))
+        denominator = std::max(max_score - selection_floor, 0.001f);
+    return denominator;
+}
+
 } // namespace
 
 struct SurfaceColorAssist::State
@@ -61,6 +74,10 @@ struct SurfaceColorAssist::State
     SurfaceFeatureMode preview_mode { SurfaceFeatureMode::Both };
     float preview_threshold { -1.0f };
     float preview_falloff { -1.0f };
+    unsigned preview_blend_steps { 0 };
+    std::array<bool, PreviewBandCount> preview_blend_band_enabled { true, true, true, true, true, true, true, true };
+    std::optional<SurfaceFeatureColor> preview_blend_start_color;
+    std::optional<SurfaceFeatureColor> preview_blend_end_color;
 };
 
 SurfaceColorAssist::SurfaceColorAssist(wxWindow *event_owner)
@@ -179,6 +196,10 @@ void SurfaceColorAssist::clear_cached_result(State &state)
     state.preview_key.reset();
     state.preview_threshold = -1.0f;
     state.preview_falloff = -1.0f;
+    state.preview_blend_steps = 0;
+    state.preview_blend_band_enabled.fill(true);
+    state.preview_blend_start_color.reset();
+    state.preview_blend_end_color.reset();
 }
 
 const SurfaceColorAssistSettings& SurfaceColorAssist::settings() const
@@ -258,7 +279,11 @@ void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)
     if (m_state->preview_key && keys_match(*m_state->preview_key, key) &&
         m_state->preview_mode == settings.mode &&
         m_state->preview_threshold == settings.threshold &&
-        m_state->preview_falloff == settings.preview_falloff)
+        m_state->preview_falloff == settings.preview_falloff &&
+        m_state->preview_blend_steps == settings.blend_steps &&
+        m_state->preview_blend_band_enabled == settings.blend_band_enabled &&
+        m_state->preview_blend_start_color == settings.blend_start_color &&
+        m_state->preview_blend_end_color == settings.blend_end_color)
         return;
 
     for (GLModel &band : m_state->preview_bands)
@@ -274,16 +299,7 @@ void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)
         band.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3 };
 
     const float selection_floor = preview_selection_floor(*field, settings);
-    float max_score = 0.0f;
-    for (size_t triangle_idx = 0; triangle_idx < score_count; ++triangle_idx)
-        max_score = std::max(max_score, score_for_triangle(*field, settings.mode, triangle_idx));
-    float denominator = std::max(2.0f * settings.preview_falloff, 0.001f);
-    if (max_score > 0.0f && max_score < std::max(0.0f, settings.threshold - settings.preview_falloff)) {
-        // A score field's magnitude varies with tessellation and smoothing.
-        // Preserve an explicit user threshold when it selects anything, but
-        // show a bounded relative preview instead of an empty result otherwise.
-        denominator = std::max(max_score - selection_floor, 0.001f);
-    }
+    const float denominator = preview_score_denominator(*field, settings, selection_floor);
 
     // Keep only connected feature regions of useful physical area. Rendering
     // raw qualifying facets makes dense STL tessellation read as visual noise.
@@ -315,12 +331,26 @@ void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)
         band.add_triangle(base, base + 1, base + 2);
     }
 
-    const ColorRGBA start = settings.mode == SurfaceFeatureMode::Valleys ?
-        ColorRGBA(0.02f, 0.65f, 0.62f, 0.20f) : ColorRGBA(0.55f, 0.70f, 0.84f, 0.18f);
-    const ColorRGBA end = settings.mode == SurfaceFeatureMode::Valleys ?
-        ColorRGBA(1.00f, 0.62f, 0.18f, 0.55f) : ColorRGBA(0.88f, 0.94f, 1.00f, 0.48f);
+    const bool has_blend_preview = settings.blend_start_color && settings.blend_end_color;
+    const ColorRGBA start = has_blend_preview ?
+        ColorRGBA(float(settings.blend_start_color->red) / 255.0f,
+                  float(settings.blend_start_color->green) / 255.0f,
+                  float(settings.blend_start_color->blue) / 255.0f, 0.55f) :
+        (settings.mode == SurfaceFeatureMode::Valleys ?
+            ColorRGBA(0.02f, 0.65f, 0.62f, 0.20f) : ColorRGBA(0.55f, 0.70f, 0.84f, 0.18f));
+    const ColorRGBA end = has_blend_preview ?
+        ColorRGBA(float(settings.blend_end_color->red) / 255.0f,
+                  float(settings.blend_end_color->green) / 255.0f,
+                  float(settings.blend_end_color->blue) / 255.0f, 0.55f) :
+        (settings.mode == SurfaceFeatureMode::Valleys ?
+            ColorRGBA(1.00f, 0.62f, 0.18f, 0.55f) : ColorRGBA(0.88f, 0.94f, 1.00f, 0.48f));
+    const unsigned blend_steps = std::clamp(settings.blend_steps, 2u, unsigned(PreviewBandCount));
     for (size_t band_idx = 0; band_idx < PreviewBandCount; ++band_idx) {
-        const float t = float(band_idx + 1) / float(PreviewBandCount);
+        const float normalized = float(band_idx + 1) / float(PreviewBandCount);
+        const unsigned blend_index = std::min(blend_steps - 1, unsigned(normalized * blend_steps));
+        if (!settings.blend_band_enabled[blend_index])
+            continue;
+        const float t = has_blend_preview ? float(blend_index) / float(blend_steps - 1) : normalized;
         geometry[band_idx].color = ColorRGBA(start.r() + (end.r() - start.r()) * t,
                                               start.g() + (end.g() - start.g()) * t,
                                               start.b() + (end.b() - start.b()) * t,
@@ -333,6 +363,10 @@ void SurfaceColorAssist::rebuild_preview_bands(const ModelVolume &volume)
     m_state->preview_mode = settings.mode;
     m_state->preview_threshold = settings.threshold;
     m_state->preview_falloff = settings.preview_falloff;
+    m_state->preview_blend_steps = settings.blend_steps;
+    m_state->preview_blend_band_enabled = settings.blend_band_enabled;
+    m_state->preview_blend_start_color = settings.blend_start_color;
+    m_state->preview_blend_end_color = settings.blend_end_color;
 }
 
 const SurfaceFeatureField* SurfaceColorAssist::current_field(const ModelVolume &volume) const
@@ -346,13 +380,33 @@ const SurfaceFeatureField* SurfaceColorAssist::current_field(const ModelVolume &
 
 std::vector<size_t> SurfaceColorAssist::selected_triangles(const ModelVolume &volume) const
 {
+    const std::vector<SurfaceFeatureSelection> selected = selected_feature_triangles(volume);
+    std::vector<size_t> triangle_indices;
+    triangle_indices.reserve(selected.size());
+    for (const SurfaceFeatureSelection &selection : selected)
+        triangle_indices.emplace_back(selection.triangle_index);
+    return triangle_indices;
+}
+
+std::vector<SurfaceFeatureSelection> SurfaceColorAssist::selected_feature_triangles(const ModelVolume &volume) const
+{
     const SurfaceFeatureField *field = current_field(volume);
     if (field == nullptr)
         return {};
 
-    return select_surface_feature_triangles(*field, m_state->settings.mode,
-                                            preview_selection_floor(*field, m_state->settings),
-                                            m_state->settings.min_patch_area_mm2);
+    const float selection_floor = preview_selection_floor(*field, m_state->settings);
+    const float denominator = preview_score_denominator(*field, m_state->settings, selection_floor);
+    const std::vector<size_t> triangle_indices = select_surface_feature_triangles(
+        *field, m_state->settings.mode, selection_floor, m_state->settings.min_patch_area_mm2);
+
+    std::vector<SurfaceFeatureSelection> selected;
+    selected.reserve(triangle_indices.size());
+    for (const size_t triangle_idx : triangle_indices) {
+        selected.push_back({ triangle_idx, std::clamp(
+            (score_for_triangle(*field, m_state->settings.mode, triangle_idx) - selection_floor) / denominator,
+            0.0f, 1.0f) });
+    }
+    return selected;
 }
 
 } // namespace Slic3r::GUI

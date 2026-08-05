@@ -33,7 +33,23 @@ struct SurfaceColorAssistSettings
     float               preview_falloff { 0.08f };
     float               analysis_radius_mm { 1.0f };
     float               min_patch_area_mm2 { 0.25f };
+    unsigned            color_edge_smoothing_passes { 0 };
     std::optional<size_t> target_filament;
+    std::optional<unsigned int> ramp_low_filament;
+    std::optional<unsigned int> ramp_mid_filament;
+    std::optional<unsigned int> ramp_high_filament;
+    std::optional<unsigned int> blend_start_filament;
+    std::optional<unsigned int> blend_end_filament;
+    unsigned                    blend_steps { 5 };
+    std::array<bool, 8>           blend_band_enabled { true, true, true, true, true, true, true, true };
+    std::optional<SurfaceFeatureColor> blend_start_color;
+    std::optional<SurfaceFeatureColor> blend_end_color;
+};
+
+struct SurfaceFeatureSelection
+{
+    size_t triangle_index { 0 };
+    float  normalized_score { 0.0f };
 };
 
 // GUI-only asynchronous state for the future color-painting assistant. It owns
@@ -65,6 +81,7 @@ public:
     const SurfaceFeatureField*        current_field(const ModelVolume &volume) const;
     // Returns the exact original mesh facets currently represented by preview bands.
     std::vector<size_t>               selected_triangles(const ModelVolume &volume) const;
+    std::vector<SurfaceFeatureSelection> selected_feature_triangles(const ModelVolume &volume) const;
 
 private:
     struct State;

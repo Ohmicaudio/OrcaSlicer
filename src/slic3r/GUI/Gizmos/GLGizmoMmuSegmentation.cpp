@@ -18,6 +18,7 @@
 #include <GL/glew.h>
 #include <wx/glcanvas.h>
 #include <algorithm>
+#include <cmath>
 #include <boost/log/trivial.hpp>
 #include <string>
 
@@ -76,6 +77,29 @@ static ImU32 physical_color_to_ImU32(const std::string& hex)
     Slic3r::GUI::BitmapCache::parse_color4(hex, rgba);
     ColorRGBA col(float(rgba[0]) / 255.f, float(rgba[1]) / 255.f, float(rgba[2]) / 255.f, float(rgba[3]) / 255.f);
     return ImGuiWrapper::to_ImU32(col);
+}
+
+static std::optional<unsigned int> find_ratio_mixed_filament_id(const MixedFilamentManager &manager,
+                                                                 size_t                      num_physical,
+                                                                 unsigned int                component_a,
+                                                                 unsigned int                component_b,
+                                                                 int                         mix_b_percent)
+{
+    unsigned int filament_id = static_cast<unsigned int>(num_physical + 1);
+    for (const MixedFilament &entry : manager.mixed_filaments()) {
+        if (!entry.enabled || entry.deleted)
+            continue;
+
+        const bool direct_match = entry.component_a == component_a && entry.component_b == component_b &&
+                                  entry.mix_b_percent == mix_b_percent;
+        const bool reverse_match = entry.component_a == component_b && entry.component_b == component_a &&
+                                   entry.mix_b_percent == 100 - mix_b_percent;
+        if ((direct_match || reverse_match) && !entry.gradient_enabled && entry.manual_pattern.empty() &&
+            entry.distribution_mode == int(MixedFilament::Simple))
+            return filament_id;
+        ++filament_id;
+    }
+    return std::nullopt;
 }
 
 void GLGizmoMmuSegmentation::on_opening()
@@ -965,6 +989,30 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         render_assist_control("Minimum patch area", "-##surface_color_assist_patch_area", "##surface_color_assist_patch_area", "+##surface_color_assist_patch_area", "##surface_color_assist_patch_area_input",
                               &assist_settings.min_patch_area_mm2, 0.0f, 100.0f, "%.2f mm2");
 
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Color island cleanup");
+        ImGui::SameLine(sliders_left_width);
+        const float smoothing_button_width = ImGui::GetFrameHeight();
+        const float smoothing_slider_width = std::max(40.0f,
+            sliders_width - 2.0f * smoothing_button_width - 2.0f * ImGui::GetStyle().ItemSpacing.x);
+        if (ImGui::Button("-##surface_color_assist_smoothing", ImVec2(smoothing_button_width, 0.0f)) &&
+            assist_settings.color_edge_smoothing_passes > 0)
+            --assist_settings.color_edge_smoothing_passes;
+        ImGui::SameLine();
+        int smoothing_passes = static_cast<int>(assist_settings.color_edge_smoothing_passes);
+        ImGui::PushItemWidth(smoothing_slider_width);
+        if (ImGui::SliderInt("##surface_color_assist_smoothing", &smoothing_passes, 0, 4, "%d"))
+            assist_settings.color_edge_smoothing_passes = static_cast<unsigned>(smoothing_passes);
+        ImGui::SameLine();
+        if (ImGui::Button("+##surface_color_assist_smoothing", ImVec2(smoothing_button_width, 0.0f)) &&
+            assist_settings.color_edge_smoothing_passes < 4)
+            ++assist_settings.color_edge_smoothing_passes;
+        ImGui::SameLine(drag_left_width + sliders_left_width);
+        ImGui::PushItemWidth(1.5f * slider_icon_width);
+        smoothing_passes = static_cast<int>(assist_settings.color_edge_smoothing_passes);
+        if (ImGui::InputInt("##surface_color_assist_smoothing_input", &smoothing_passes))
+            assist_settings.color_edge_smoothing_passes = static_cast<unsigned>(std::clamp(smoothing_passes, 0, 4));
+
         if (m_surface_color_assist.is_analyzing()) {
             ImGui::TextUnformatted("Analyzing selected volume...");
             ImGui::SameLine();
@@ -985,10 +1033,11 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                     ImGui::TextWrapped("%s", message.c_str());
                 }
 
-                const std::vector<size_t> selected_triangles = m_surface_color_assist.selected_triangles(*selected_volume);
+                const std::vector<SurfaceFeatureSelection> selected_triangles =
+                    m_surface_color_assist.selected_feature_triangles(*selected_volume);
                 if (selected_triangles.empty()) {
                     ImGui::TextDisabled("No facets match the current preview settings.");
-                } else if (ImGui::Button("Apply to selected filament##surface_color_assist")) {
+                } else {
                     ModelObject *model_object = m_c->selection_info()->model_object();
                     size_t selector_idx = 0;
                     bool found_selector = false;
@@ -1002,19 +1051,274 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                         ++selector_idx;
                     }
 
-                    const unsigned int filament_id = m_selected_extruder_idx < m_display_filament_ids.size() ?
+                    const unsigned int selected_filament_id = m_selected_extruder_idx < m_display_filament_ids.size() ?
                         m_display_filament_ids[m_selected_extruder_idx] : unsigned(m_selected_extruder_idx + 1);
-                    if (found_selector && filament_id >= 1 && filament_id <= size_t(EnforcerBlockerType::ExtruderMax)) {
+                    const unsigned int default_base_filament = selector_idx < m_volumes_extruder_idxs.size() ?
+                        unsigned(std::max(1, m_volumes_extruder_idxs[selector_idx])) : selected_filament_id;
+                    const auto sanitize_ramp_filament = [this, selected_filament_id](std::optional<unsigned int> &filament_id,
+                                                                                     unsigned int fallback) {
+                        if (!filament_id || std::find(m_display_filament_ids.begin(), m_display_filament_ids.end(), *filament_id) == m_display_filament_ids.end())
+                            filament_id = fallback;
+                    };
+                    sanitize_ramp_filament(assist_settings.ramp_low_filament, default_base_filament);
+                    sanitize_ramp_filament(assist_settings.ramp_mid_filament, selected_filament_id);
+                    sanitize_ramp_filament(assist_settings.ramp_high_filament, selected_filament_id);
+
+                    const auto filament_picker = [this](const char *label, std::optional<unsigned int> &filament_id) {
+                        const std::string preview = filament_id ? "Filament " + std::to_string(*filament_id) : "Select filament";
+                        if (ImGui::BeginCombo(label, preview.c_str())) {
+                            for (const unsigned int candidate_id : m_display_filament_ids) {
+                                const std::string candidate_label = "Filament " + std::to_string(candidate_id);
+                                const bool is_selected = filament_id && *filament_id == candidate_id;
+                                if (ImGui::Selectable(candidate_label.c_str(), is_selected))
+                                    filament_id = candidate_id;
+                                if (is_selected)
+                                    ImGui::SetItemDefaultFocus();
+                            }
+                            ImGui::EndCombo();
+                        }
+                    };
+
+                    ImGui::Separator();
+                    ImGui::TextUnformatted("Intensity ramp");
+                    filament_picker("Low score", assist_settings.ramp_low_filament);
+                    filament_picker("Middle score", assist_settings.ramp_mid_filament);
+                    filament_picker("High score", assist_settings.ramp_high_filament);
+
+                    const std::vector<std::string> physical_colors = wxGetApp().plater()->get_extruder_colors_from_plater_config(nullptr, false);
+                    const size_t num_physical = physical_colors.size();
+                    const auto sanitize_blend_filament = [num_physical](std::optional<unsigned int> &filament_id,
+                                                                         unsigned int fallback) {
+                        if (!filament_id || *filament_id == 0 || *filament_id > num_physical)
+                            filament_id = fallback;
+                    };
+                    if (num_physical >= 2) {
+                        sanitize_blend_filament(assist_settings.blend_start_filament,
+                                                std::min<unsigned int>(default_base_filament, unsigned(num_physical)));
+                        const unsigned int default_blend_end = *assist_settings.blend_start_filament == 1 ? 2 : 1;
+                        sanitize_blend_filament(assist_settings.blend_end_filament, default_blend_end);
+
+                        const auto physical_filament_picker = [num_physical](const char *label,
+                                                                              std::optional<unsigned int> &filament_id) {
+                            const std::string preview = filament_id ? "Filament " + std::to_string(*filament_id) : "Select filament";
+                            if (ImGui::BeginCombo(label, preview.c_str())) {
+                                for (unsigned int candidate_id = 1; candidate_id <= num_physical; ++candidate_id) {
+                                    const std::string candidate_label = "Filament " + std::to_string(candidate_id);
+                                    const bool is_selected = filament_id && *filament_id == candidate_id;
+                                    if (ImGui::Selectable(candidate_label.c_str(), is_selected))
+                                        filament_id = candidate_id;
+                                    if (is_selected)
+                                        ImGui::SetItemDefaultFocus();
+                                }
+                                ImGui::EndCombo();
+                            }
+                        };
+
+                        ImGui::Separator();
+                        ImGui::TextUnformatted("Surface blend");
+                        physical_filament_picker("Start color", assist_settings.blend_start_filament);
+                        physical_filament_picker("End color", assist_settings.blend_end_filament);
+
+                        ImGui::AlignTextToFramePadding();
+                        ImGui::TextUnformatted("Blend steps");
+                        ImGui::SameLine(sliders_left_width);
+                        const float blend_button_width = ImGui::GetFrameHeight();
+                        const float blend_slider_width = std::max(40.0f,
+                            sliders_width - 2.0f * blend_button_width - 2.0f * ImGui::GetStyle().ItemSpacing.x);
+                        if (ImGui::Button("-##surface_color_assist_blend_steps", ImVec2(blend_button_width, 0.0f)) &&
+                            assist_settings.blend_steps > 2)
+                            --assist_settings.blend_steps;
+                        ImGui::SameLine();
+                        int blend_steps = static_cast<int>(assist_settings.blend_steps);
+                        ImGui::PushItemWidth(blend_slider_width);
+                        if (ImGui::SliderInt("##surface_color_assist_blend_steps", &blend_steps, 2, int(SurfaceColorAssist::PreviewBandCount), "%d"))
+                            assist_settings.blend_steps = static_cast<unsigned>(blend_steps);
+                        ImGui::SameLine();
+                        if (ImGui::Button("+##surface_color_assist_blend_steps", ImVec2(blend_button_width, 0.0f)) &&
+                            assist_settings.blend_steps < SurfaceColorAssist::PreviewBandCount)
+                            ++assist_settings.blend_steps;
+                        ImGui::SameLine(drag_left_width + sliders_left_width);
+                        ImGui::PushItemWidth(1.5f * slider_icon_width);
+                        blend_steps = static_cast<int>(assist_settings.blend_steps);
+                        if (ImGui::InputInt("##surface_color_assist_blend_steps_input", &blend_steps))
+                            assist_settings.blend_steps = static_cast<unsigned>(std::clamp(blend_steps, 2, int(SurfaceColorAssist::PreviewBandCount)));
+
+                        const auto set_blend_preview_color = [&physical_colors](const std::optional<unsigned int> &filament_id)
+                            -> std::optional<SurfaceFeatureColor> {
+                            if (!filament_id || *filament_id == 0 || *filament_id > physical_colors.size())
+                                return std::nullopt;
+                            unsigned char rgba[4] = {};
+                            if (!BitmapCache::parse_color4(physical_colors[*filament_id - 1], rgba))
+                                return std::nullopt;
+                            return SurfaceFeatureColor { rgba[0], rgba[1], rgba[2], rgba[3] };
+                        };
+                        if (*assist_settings.blend_start_filament != *assist_settings.blend_end_filament) {
+                            assist_settings.blend_start_color = set_blend_preview_color(assist_settings.blend_start_filament);
+                            assist_settings.blend_end_color = set_blend_preview_color(assist_settings.blend_end_filament);
+                        } else {
+                            assist_settings.blend_start_color.reset();
+                            assist_settings.blend_end_color.reset();
+                            ImGui::TextDisabled("Choose two different physical colors for a surface blend.");
+                        }
+                        if (assist_settings.blend_start_color && assist_settings.blend_end_color) {
+                            ImGui::TextUnformatted("Blend layers");
+                            ImGui::TextDisabled("Disabled layers keep their original color.");
+                            const SurfaceFeatureColor &start_color = *assist_settings.blend_start_color;
+                            const SurfaceFeatureColor &end_color = *assist_settings.blend_end_color;
+                            const unsigned steps = std::clamp(assist_settings.blend_steps, 2u,
+                                                              unsigned(SurfaceColorAssist::PreviewBandCount));
+                            for (unsigned step = 0; step < steps; ++step) {
+                                const float t = float(step) / float(steps - 1);
+                                const ImVec4 color(
+                                    (float(start_color.red) + (float(end_color.red) - float(start_color.red)) * t) / 255.0f,
+                                    (float(start_color.green) + (float(end_color.green) - float(start_color.green)) * t) / 255.0f,
+                                    (float(start_color.blue) + (float(end_color.blue) - float(start_color.blue)) * t) / 255.0f,
+                                    1.0f);
+                                const std::string checkbox_id = "##surface_color_assist_blend_layer_" + std::to_string(step);
+                                ImGui::Checkbox(checkbox_id.c_str(), &assist_settings.blend_band_enabled[step]);
+                                ImGui::SameLine();
+                                const std::string color_id = "##surface_color_assist_blend_layer_color_" + std::to_string(step);
+                                ImGui::ColorButton(color_id.c_str(), color, ImGuiColorEditFlags_NoTooltip, ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
+                                ImGui::SameLine();
+                                ImGui::Text("Layer %u  %u%%", step + 1, unsigned(std::lround(t * 100.0f)));
+                            }
+                        }
+                        ImGui::TextDisabled("Preview is temporary. Apply creates missing ratio rows in Color Mixing.");
+                    } else {
+                        assist_settings.blend_start_color.reset();
+                        assist_settings.blend_end_color.reset();
+                    }
+
+                    if (found_selector && selected_filament_id >= 1 && selected_filament_id <= size_t(EnforcerBlockerType::ExtruderMax) &&
+                        ImGui::Button("Apply to selected filament##surface_color_assist")) {
                         Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Apply surface color assist", UndoRedo::SnapshotType::GizmoAction);
                         const EnforcerBlockerType state = static_cast<EnforcerBlockerType>(
-                            static_cast<int>(EnforcerBlockerType::Extruder1) + int(filament_id) - 1);
-                        for (const size_t triangle_idx : selected_triangles)
-                            m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(triangle_idx), state);
+                            static_cast<int>(EnforcerBlockerType::Extruder1) + int(selected_filament_id) - 1);
+                        for (const SurfaceFeatureSelection &selection : selected_triangles)
+                            m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selection.triangle_index), state);
                         m_triangle_selectors[selector_idx]->request_update_render_data(true);
-                        assist_settings.target_filament = filament_id;
+                        assist_settings.target_filament = selected_filament_id;
                         update_model_object();
                         m_parent.set_as_dirty();
                         m_surface_color_assist.clear();
+                    }
+
+                    if (found_selector && ImGui::Button("Apply intensity ramp##surface_color_assist")) {
+                        Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Apply surface color intensity ramp", UndoRedo::SnapshotType::GizmoAction);
+                        std::vector<size_t> triangle_indices;
+                        std::vector<size_t> band_assignments;
+                        triangle_indices.reserve(selected_triangles.size());
+                        band_assignments.reserve(selected_triangles.size());
+                        for (const SurfaceFeatureSelection &selection : selected_triangles) {
+                            triangle_indices.emplace_back(selection.triangle_index);
+                            band_assignments.emplace_back(selection.normalized_score < (1.0f / 3.0f) ? 0 :
+                                selection.normalized_score < (2.0f / 3.0f) ? 1 : 2);
+                        }
+                        const std::vector<size_t> smoothed_bands = smooth_surface_feature_band_assignments(
+                            *field, triangle_indices, band_assignments, assist_settings.color_edge_smoothing_passes);
+                        const std::vector<size_t> &applied_bands = smoothed_bands.size() == band_assignments.size() ?
+                            smoothed_bands : band_assignments;
+                        for (size_t index = 0; index < selected_triangles.size(); ++index) {
+                            const unsigned int filament_id = applied_bands[index] == 0 ? *assist_settings.ramp_low_filament :
+                                applied_bands[index] == 1 ? *assist_settings.ramp_mid_filament :
+                                *assist_settings.ramp_high_filament;
+                            if (filament_id >= 1 && filament_id <= size_t(EnforcerBlockerType::ExtruderMax))
+                                m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selected_triangles[index].triangle_index),
+                                    static_cast<EnforcerBlockerType>(static_cast<int>(EnforcerBlockerType::Extruder1) + int(filament_id) - 1));
+                        }
+                        m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                        update_model_object();
+                        m_parent.set_as_dirty();
+                        m_surface_color_assist.clear();
+                    }
+
+                    if (found_selector && num_physical >= 2 && assist_settings.blend_start_filament &&
+                        assist_settings.blend_end_filament &&
+                        *assist_settings.blend_start_filament != *assist_settings.blend_end_filament &&
+                        ImGui::Button("Apply surface blend##surface_color_assist")) {
+                        PresetBundle *preset_bundle = wxGetApp().preset_bundle;
+                        if (preset_bundle == nullptr)
+                            return;
+
+                        const unsigned int start_filament = *assist_settings.blend_start_filament;
+                        const unsigned int end_filament = *assist_settings.blend_end_filament;
+                        const unsigned steps = std::clamp(assist_settings.blend_steps, 2u,
+                                                          unsigned(SurfaceColorAssist::PreviewBandCount));
+                        std::vector<bool> enabled_blend_bands;
+                        enabled_blend_bands.reserve(steps);
+                        for (unsigned step = 0; step < steps; ++step)
+                            enabled_blend_bands.emplace_back(assist_settings.blend_band_enabled[step]);
+                        Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Apply surface color blend", UndoRedo::SnapshotType::GizmoAction);
+                        std::vector<unsigned int> blend_filament_ids;
+                        blend_filament_ids.reserve(steps);
+                        MixedFilamentManager &manager = preset_bundle->mixed_filaments;
+                        for (unsigned step = 0; step < steps; ++step) {
+                            if (!enabled_blend_bands[step]) {
+                                blend_filament_ids.emplace_back(0);
+                                continue;
+                            }
+                            if (step == 0) {
+                                blend_filament_ids.emplace_back(start_filament);
+                                continue;
+                            }
+                            if (step + 1 == steps) {
+                                blend_filament_ids.emplace_back(end_filament);
+                                continue;
+                            }
+
+                            const int mix_b_percent = int(std::lround(100.0 * double(step) / double(steps - 1)));
+                            std::optional<unsigned int> mixed_filament_id = find_ratio_mixed_filament_id(
+                                manager, num_physical, start_filament, end_filament, mix_b_percent);
+                            if (!mixed_filament_id) {
+                                manager.add_custom_filament(start_filament, end_filament, mix_b_percent, physical_colors);
+                                mixed_filament_id = find_ratio_mixed_filament_id(
+                                    manager, num_physical, start_filament, end_filament, mix_b_percent);
+                            }
+                            if (!mixed_filament_id) {
+                                blend_filament_ids.clear();
+                                break;
+                            }
+                            blend_filament_ids.emplace_back(*mixed_filament_id);
+                        }
+
+                        if (blend_filament_ids.size() == steps) {
+                            if (ConfigOptionString *opt = preset_bundle->project_config.option<ConfigOptionString>("mixed_filament_definitions"))
+                                opt->value = manager.serialize_custom_entries();
+                            else
+                                preset_bundle->project_config.set_key_value("mixed_filament_definitions",
+                                    new ConfigOptionString(manager.serialize_custom_entries()));
+                            wxGetApp().plater()->sidebar().update_mixed_filament_panel(false);
+                            wxGetApp().plater()->post_slice_state_change_update();
+                            init_extruders_data();
+
+                            std::vector<size_t> triangle_indices;
+                            std::vector<size_t> band_assignments;
+                            triangle_indices.reserve(selected_triangles.size());
+                            band_assignments.reserve(selected_triangles.size());
+                            for (const SurfaceFeatureSelection &selection : selected_triangles) {
+                                triangle_indices.emplace_back(selection.triangle_index);
+                                band_assignments.emplace_back(std::min<size_t>(steps - 1,
+                                    size_t(selection.normalized_score * float(steps))));
+                            }
+                            const std::vector<size_t> cleaned_bands = smooth_surface_feature_band_assignments(
+                                *field, triangle_indices, band_assignments, assist_settings.color_edge_smoothing_passes);
+                            const std::vector<size_t> &applied_bands = cleaned_bands.size() == band_assignments.size() ?
+                                cleaned_bands : band_assignments;
+                            const std::vector<bool> enabled_facets = select_surface_feature_enabled_bands(
+                                applied_bands, enabled_blend_bands);
+                            for (size_t index = 0; index < selected_triangles.size(); ++index) {
+                                if (!enabled_facets[index])
+                                    continue;
+                                const unsigned int filament_id = blend_filament_ids[applied_bands[index]];
+                                if (filament_id <= size_t(EnforcerBlockerType::ExtruderMax))
+                                    m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selected_triangles[index].triangle_index),
+                                        static_cast<EnforcerBlockerType>(static_cast<int>(EnforcerBlockerType::Extruder1) + int(filament_id) - 1));
+                            }
+                            m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                            update_model_object();
+                            m_parent.set_as_dirty();
+                            m_surface_color_assist.clear();
+                        }
                     }
                 }
             }
