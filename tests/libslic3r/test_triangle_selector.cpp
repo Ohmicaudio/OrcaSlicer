@@ -37,3 +37,20 @@ TEST_CASE("Triangle selector round-trips painted states above sixteen", "[Triang
     restored.deserialize(data, true, static_cast<EnforcerBlockerType>(painted_state));
     CHECK(restored.has_facets(static_cast<EnforcerBlockerType>(painted_state)));
 }
+
+TEST_CASE("Triangle selector reports whether an original facet has one paint state", "[TriangleSelector][MMUPaint]")
+{
+    indexed_triangle_set its;
+    its.vertices = {
+        Vec3f(0.f, 0.f, 0.f),
+        Vec3f(1.f, 0.f, 0.f),
+        Vec3f(0.f, 1.f, 0.f),
+    };
+    its.indices = { stl_triangle_vertex_indices(0, 1, 2) };
+
+    TriangleSelector selector { TriangleMesh(its) };
+    CHECK(selector.original_facet_uniform_state(0) == EnforcerBlockerType::NONE);
+    selector.set_facet(0, EnforcerBlockerType::Extruder4);
+    CHECK(selector.original_facet_uniform_state(0) == EnforcerBlockerType::Extruder4);
+    CHECK_FALSE(selector.original_facet_uniform_state(1));
+}

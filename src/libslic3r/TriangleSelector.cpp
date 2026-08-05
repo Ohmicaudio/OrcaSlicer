@@ -963,6 +963,30 @@ void TriangleSelector::set_facet(int facet_idx, EnforcerBlockerType state)
     m_triangles[facet_idx].set_state(state);
 }
 
+std::optional<EnforcerBlockerType> TriangleSelector::original_facet_uniform_state(int facet_idx) const
+{
+    if (facet_idx < 0 || facet_idx >= m_orig_size_indices)
+        return std::nullopt;
+
+    const auto state_of = [this](const auto &self, int triangle_idx) -> std::optional<EnforcerBlockerType> {
+        const Triangle &triangle = m_triangles[triangle_idx];
+        if (!triangle.is_split())
+            return triangle.get_state();
+
+        std::optional<EnforcerBlockerType> state;
+        for (int child_idx = 0; child_idx <= triangle.number_of_split_sides(); ++child_idx) {
+            const std::optional<EnforcerBlockerType> child_state = self(self, triangle.children[child_idx]);
+            if (!child_state)
+                return std::nullopt;
+            if (state && *state != *child_state)
+                return std::nullopt;
+            state = child_state;
+        }
+        return state;
+    };
+    return state_of(state_of, facet_idx);
+}
+
 // called by select_patch()->select_triangle()...select_triangle()
 // to decide which sides of the triangle to split and to actually split it calling set_division() and perform_split().
 void TriangleSelector::split_triangle(int facet_idx, const Vec3i32 &neighbors)

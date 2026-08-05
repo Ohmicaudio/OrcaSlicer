@@ -5,6 +5,7 @@
 
 
 #include <cfloat>
+#include <optional>
 #include "Point.hpp"
 #include "TriangleMesh.hpp"
 
@@ -341,6 +342,11 @@ public:
 
     // Set facet of the mesh to a given state. Only works for original triangles.
     void set_facet(int facet_idx, EnforcerBlockerType state);
+
+    // Returns a state only when every leaf of an original facet has the same
+    // paint state. A split facet with mixed paint is intentionally reported as
+    // unavailable so higher-level tools cannot silently flatten it.
+    std::optional<EnforcerBlockerType> original_facet_uniform_state(int facet_idx) const;
 
     // Clear everything and make the tree empty.
     void reset();
