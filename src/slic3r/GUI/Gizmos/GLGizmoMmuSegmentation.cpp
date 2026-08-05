@@ -1208,7 +1208,6 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                         assist_settings.target_filament = selected_filament_id;
                         update_model_object();
                         m_parent.set_as_dirty();
-                        m_surface_color_assist.clear();
                     }
 
                     if (found_selector && ImGui::Button("Apply intensity ramp##surface_color_assist")) {
@@ -1253,7 +1252,6 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                         }
                         update_model_object();
                         m_parent.set_as_dirty();
-                        m_surface_color_assist.clear();
                     }
 
                     if (found_selector && num_physical >= 2 && assist_settings.blend_start_filament &&
@@ -1357,7 +1355,6 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                             }
                             update_model_object();
                             m_parent.set_as_dirty();
-                            m_surface_color_assist.clear();
                         }
                     }
                 }
