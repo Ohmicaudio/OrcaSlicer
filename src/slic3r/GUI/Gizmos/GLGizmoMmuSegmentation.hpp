@@ -5,6 +5,8 @@
 #include "SurfaceColorAssist.hpp"
 #include "libslic3r/MixedFilament.hpp"
 
+#include <map>
+
 namespace Slic3r::GUI {
 
 class GLMmSegmentationGizmo3DScene
@@ -115,6 +117,7 @@ protected:
     std::vector<unsigned int>         m_display_filament_ids;
     std::vector<int>                  m_volumes_extruder_idxs;
     SurfaceColorAssist                 m_surface_color_assist;
+    std::map<const ModelVolume*, SurfaceColorPaintLayerStack> m_surface_color_feature_pass_stacks;
 
     // BBS
     wchar_t                           m_current_tool = 0;
@@ -143,6 +146,10 @@ private:
     PainterGizmoType get_painter_type() const override;
 
     void init_model_triangle_selectors();
+    SurfaceColorPaintLayerStack* ensure_surface_color_feature_pass_stack(const ModelVolume &volume, size_t selector_idx);
+    bool append_surface_color_feature_pass(const ModelVolume &volume, size_t selector_idx, std::string name,
+                                           std::vector<SurfaceColorPaintAssignment> assignments);
+    bool resolve_surface_color_feature_pass_stack(const ModelVolume &volume, size_t selector_idx);
 
     // BBS
     void update_triangle_selectors_colors();

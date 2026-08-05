@@ -1194,9 +1194,17 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                         Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Apply surface color assist", UndoRedo::SnapshotType::GizmoAction);
                         const EnforcerBlockerType state = static_cast<EnforcerBlockerType>(
                             static_cast<int>(EnforcerBlockerType::Extruder1) + int(selected_filament_id) - 1);
+                        std::vector<SurfaceColorPaintAssignment> assignments;
+                        assignments.reserve(selected_triangles.size());
                         for (const SurfaceFeatureSelection &selection : selected_triangles)
-                            m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selection.triangle_index), state);
-                        m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                            assignments.emplace_back(SurfaceColorPaintAssignment { selection.triangle_index, selected_filament_id, true });
+                        const bool layered = append_surface_color_feature_pass(
+                            *selected_volume, selector_idx, "Surface feature", std::move(assignments));
+                        if (!layered) {
+                            for (const SurfaceFeatureSelection &selection : selected_triangles)
+                                m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selection.triangle_index), state);
+                            m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                        }
                         assist_settings.target_filament = selected_filament_id;
                         update_model_object();
                         m_parent.set_as_dirty();
@@ -1219,15 +1227,30 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                             assist_settings.min_patch_area_mm2);
                         const std::vector<size_t> &applied_bands = smoothed_bands.size() == band_assignments.size() ?
                             smoothed_bands : band_assignments;
+                        std::vector<SurfaceColorPaintAssignment> assignments;
+                        assignments.reserve(selected_triangles.size());
                         for (size_t index = 0; index < selected_triangles.size(); ++index) {
                             const unsigned int filament_id = applied_bands[index] == 0 ? *assist_settings.ramp_low_filament :
                                 applied_bands[index] == 1 ? *assist_settings.ramp_mid_filament :
                                 *assist_settings.ramp_high_filament;
                             if (filament_id >= 1 && filament_id <= size_t(EnforcerBlockerType::ExtruderMax))
-                                m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selected_triangles[index].triangle_index),
-                                    static_cast<EnforcerBlockerType>(static_cast<int>(EnforcerBlockerType::Extruder1) + int(filament_id) - 1));
+                                assignments.emplace_back(SurfaceColorPaintAssignment {
+                                    selected_triangles[index].triangle_index, filament_id, true
+                                });
                         }
-                        m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                        const bool layered = append_surface_color_feature_pass(
+                            *selected_volume, selector_idx, "Surface intensity ramp", std::move(assignments));
+                        if (!layered) {
+                            for (size_t index = 0; index < selected_triangles.size(); ++index) {
+                                const unsigned int filament_id = applied_bands[index] == 0 ? *assist_settings.ramp_low_filament :
+                                    applied_bands[index] == 1 ? *assist_settings.ramp_mid_filament :
+                                    *assist_settings.ramp_high_filament;
+                                if (filament_id >= 1 && filament_id <= size_t(EnforcerBlockerType::ExtruderMax))
+                                    m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selected_triangles[index].triangle_index),
+                                        static_cast<EnforcerBlockerType>(static_cast<int>(EnforcerBlockerType::Extruder1) + int(filament_id) - 1));
+                            }
+                            m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                        }
                         update_model_object();
                         m_parent.set_as_dirty();
                         m_surface_color_assist.clear();
@@ -1308,15 +1331,30 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                                 cleaned_bands : band_assignments;
                             const std::vector<bool> enabled_facets = select_surface_feature_enabled_bands(
                                 applied_bands, enabled_blend_bands);
+                            std::vector<SurfaceColorPaintAssignment> assignments;
+                            assignments.reserve(selected_triangles.size());
                             for (size_t index = 0; index < selected_triangles.size(); ++index) {
                                 if (!enabled_facets[index])
                                     continue;
                                 const unsigned int filament_id = blend_filament_ids[applied_bands[index]];
                                 if (filament_id <= size_t(EnforcerBlockerType::ExtruderMax))
-                                    m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selected_triangles[index].triangle_index),
-                                        static_cast<EnforcerBlockerType>(static_cast<int>(EnforcerBlockerType::Extruder1) + int(filament_id) - 1));
+                                    assignments.emplace_back(SurfaceColorPaintAssignment {
+                                        selected_triangles[index].triangle_index, filament_id, true
+                                    });
                             }
-                            m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                            const bool layered = append_surface_color_feature_pass(
+                                *selected_volume, selector_idx, "Surface blend", std::move(assignments));
+                            if (!layered) {
+                                for (size_t index = 0; index < selected_triangles.size(); ++index) {
+                                    if (!enabled_facets[index])
+                                        continue;
+                                    const unsigned int filament_id = blend_filament_ids[applied_bands[index]];
+                                    if (filament_id <= size_t(EnforcerBlockerType::ExtruderMax))
+                                        m_triangle_selectors[selector_idx]->set_facet(static_cast<int>(selected_triangles[index].triangle_index),
+                                            static_cast<EnforcerBlockerType>(static_cast<int>(EnforcerBlockerType::Extruder1) + int(filament_id) - 1));
+                                }
+                                m_triangle_selectors[selector_idx]->request_update_render_data(true);
+                            }
                             update_model_object();
                             m_parent.set_as_dirty();
                             m_surface_color_assist.clear();
@@ -1325,7 +1363,124 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 }
             }
         }
-        ImGui::TextDisabled("Apply writes standard color-paint facets. Undo returns the model to its prior state.");
+        if (selected_volume != nullptr) {
+            ModelObject *model_object = m_c->selection_info()->model_object();
+            size_t selector_idx = 0;
+            bool found_selector = false;
+            for (ModelVolume *volume : model_object->volumes) {
+                if (!volume->is_model_part())
+                    continue;
+                if (volume == selected_volume) {
+                    found_selector = selector_idx < m_triangle_selectors.size();
+                    break;
+                }
+                ++selector_idx;
+            }
+            auto stack_it = m_surface_color_feature_pass_stacks.find(selected_volume);
+            if (found_selector && stack_it != m_surface_color_feature_pass_stacks.end()) {
+                ImGui::Separator();
+                ImGui::TextUnformatted("Feature passes (session)");
+                ImGui::TextDisabled("Analysis passes can be reordered or protected during this session.");
+
+                enum class FeaturePassAction { None, ToggleEnabled, ToggleProtection, ToggleOverride, MoveUp, MoveDown, Duplicate, Delete };
+                FeaturePassAction action = FeaturePassAction::None;
+                size_t action_index = 0;
+                const std::vector<SurfaceColorPaintLayer> &layers = stack_it->second.layers();
+                for (size_t layer_index = 0; layer_index < layers.size(); ++layer_index) {
+                    const SurfaceColorPaintLayer &layer = layers[layer_index];
+                    ImGui::PushID(static_cast<int>(layer_index));
+                    ImGui::Text("%zu. %s", layer_index + 1, layer.name.c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(layer.enabled ? "Disable" : "Enable")) {
+                        action = FeaturePassAction::ToggleEnabled;
+                        action_index = layer_index;
+                    }
+                    if (layer.role == SurfaceColorPaintLayerRole::Paint) {
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton(layer.protect_painted_facets ? "Unprotect" : "Protect")) {
+                            action = FeaturePassAction::ToggleProtection;
+                            action_index = layer_index;
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(layer.ignore_protection ? "Respect mask" : "Ignore mask")) {
+                        action = FeaturePassAction::ToggleOverride;
+                        action_index = layer_index;
+                    }
+                    ImGui::SameLine();
+                    if (layer_index > 0 && ImGui::SmallButton("Up")) {
+                        action = FeaturePassAction::MoveUp;
+                        action_index = layer_index;
+                    }
+                    ImGui::SameLine();
+                    if (layer_index + 1 < layers.size() && ImGui::SmallButton("Down")) {
+                        action = FeaturePassAction::MoveDown;
+                        action_index = layer_index;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Copy")) {
+                        action = FeaturePassAction::Duplicate;
+                        action_index = layer_index;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Delete")) {
+                        action = FeaturePassAction::Delete;
+                        action_index = layer_index;
+                    }
+                    ImGui::PopID();
+                }
+
+                if (action != FeaturePassAction::None) {
+                    Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Edit surface color feature pass", UndoRedo::SnapshotType::GizmoAction);
+                    std::vector<SurfaceColorPaintLayer> &layers_to_edit = stack_it->second.layers();
+                    switch (action) {
+                    case FeaturePassAction::ToggleEnabled:
+                        layers_to_edit[action_index].enabled = !layers_to_edit[action_index].enabled;
+                        break;
+                    case FeaturePassAction::ToggleProtection:
+                        layers_to_edit[action_index].protect_painted_facets = !layers_to_edit[action_index].protect_painted_facets;
+                        break;
+                    case FeaturePassAction::ToggleOverride:
+                        layers_to_edit[action_index].ignore_protection = !layers_to_edit[action_index].ignore_protection;
+                        break;
+                    case FeaturePassAction::MoveUp:
+                        stack_it->second.move_layer(action_index, action_index - 1);
+                        break;
+                    case FeaturePassAction::MoveDown:
+                        stack_it->second.move_layer(action_index, action_index + 1);
+                        break;
+                    case FeaturePassAction::Duplicate:
+                        stack_it->second.duplicate_layer(action_index);
+                        break;
+                    case FeaturePassAction::Delete:
+                        stack_it->second.erase_layer(action_index);
+                        break;
+                    case FeaturePassAction::None:
+                        break;
+                    }
+                    if (resolve_surface_color_feature_pass_stack(*selected_volume, selector_idx)) {
+                        update_model_object();
+                        m_parent.set_as_dirty();
+                    }
+                }
+
+                const std::vector<SurfaceFeatureSelection> selected_triangles =
+                    m_surface_color_assist.selected_feature_triangles(*selected_volume);
+                if (!selected_triangles.empty() && ImGui::Button("Protect analyzed region")) {
+                    Plater::TakeSnapshot snapshot(wxGetApp().plater(), "Protect surface color region", UndoRedo::SnapshotType::GizmoAction);
+                    std::vector<size_t> protected_triangles;
+                    protected_triangles.reserve(selected_triangles.size());
+                    for (const SurfaceFeatureSelection &selection : selected_triangles)
+                        protected_triangles.emplace_back(selection.triangle_index);
+                    stack_it->second.add_protect_layer("Surface feature mask", std::move(protected_triangles));
+                    if (resolve_surface_color_feature_pass_stack(*selected_volume, selector_idx)) {
+                        update_model_object();
+                        m_parent.set_as_dirty();
+                    }
+                }
+            }
+        }
+        ImGui::TextDisabled("Feature passes preserve whole analysis facets. Manual brush edits remain direct paint for now.");
     }
 
     ImGui::Separator();
@@ -1444,6 +1599,9 @@ void GLGizmoMmuSegmentation::update_model_object()
 void GLGizmoMmuSegmentation::init_model_triangle_selectors()
 {
     const ModelObject *mo = m_c->selection_info()->model_object();
+    // Feature passes retain pointers to live model volumes. Rebuild the session
+    // stack when selectors are rebuilt so project reloads cannot leave stale keys.
+    m_surface_color_feature_pass_stacks.clear();
     m_triangle_selectors.clear();
     m_volumes_extruder_idxs.clear();
 
@@ -1475,6 +1633,65 @@ void GLGizmoMmuSegmentation::init_model_triangle_selectors()
         m_triangle_selectors.back()->set_wireframe_needed(true);
         m_volumes_extruder_idxs.push_back(mv->extruder_id());
     }
+}
+
+SurfaceColorPaintLayerStack* GLGizmoMmuSegmentation::ensure_surface_color_feature_pass_stack(
+    const ModelVolume &volume, size_t selector_idx)
+{
+    if (selector_idx >= m_triangle_selectors.size())
+        return nullptr;
+
+    if (auto existing = m_surface_color_feature_pass_stacks.find(&volume);
+        existing != m_surface_color_feature_pass_stacks.end())
+        return &existing->second;
+
+    // A feature pass operates on original mesh facets. Do not flatten a manual
+    // brush edit that has already split an original facet into different colors.
+    std::vector<unsigned int> base_filaments;
+    const size_t triangle_count = volume.mesh().its.indices.size();
+    base_filaments.reserve(triangle_count);
+    TriangleSelector &selector = *m_triangle_selectors[selector_idx];
+    for (size_t triangle_idx = 0; triangle_idx < triangle_count; ++triangle_idx) {
+        const std::optional<EnforcerBlockerType> state = selector.original_facet_uniform_state(int(triangle_idx));
+        if (!state)
+            return nullptr;
+        base_filaments.emplace_back(static_cast<unsigned int>(*state));
+    }
+
+    auto inserted = m_surface_color_feature_pass_stacks.emplace(
+        &volume, SurfaceColorPaintLayerStack(std::move(base_filaments)));
+    return &inserted.first->second;
+}
+
+bool GLGizmoMmuSegmentation::append_surface_color_feature_pass(
+    const ModelVolume &volume, size_t selector_idx, std::string name,
+    std::vector<SurfaceColorPaintAssignment> assignments)
+{
+    SurfaceColorPaintLayerStack *stack = ensure_surface_color_feature_pass_stack(volume, selector_idx);
+    if (stack == nullptr)
+        return false;
+    stack->add_paint_layer(std::move(name), std::move(assignments));
+    return resolve_surface_color_feature_pass_stack(volume, selector_idx);
+}
+
+bool GLGizmoMmuSegmentation::resolve_surface_color_feature_pass_stack(const ModelVolume &volume, size_t selector_idx)
+{
+    const auto stack_it = m_surface_color_feature_pass_stacks.find(&volume);
+    if (stack_it == m_surface_color_feature_pass_stacks.end() || selector_idx >= m_triangle_selectors.size())
+        return false;
+
+    const std::vector<unsigned int> resolved = stack_it->second.resolve();
+    if (resolved.size() != volume.mesh().its.indices.size())
+        return false;
+
+    TriangleSelector &selector = *m_triangle_selectors[selector_idx];
+    for (size_t triangle_idx = 0; triangle_idx < resolved.size(); ++triangle_idx) {
+        if (resolved[triangle_idx] > static_cast<unsigned int>(EnforcerBlockerType::ExtruderMax))
+            return false;
+        selector.set_facet(int(triangle_idx), static_cast<EnforcerBlockerType>(resolved[triangle_idx]));
+    }
+    m_triangle_selectors[selector_idx]->request_update_render_data(true);
+    return true;
 }
 
 void GLGizmoMmuSegmentation::update_triangle_selectors_colors()
