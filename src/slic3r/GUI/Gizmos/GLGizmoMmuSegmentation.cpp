@@ -565,6 +565,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         std::string color_label = std::string("##extruder color ") + std::to_string(extruder_idx);
         std::string item_text = std::to_string(extruder_idx + 1);
         const ImVec2 label_size = ImGui::CalcTextSize(item_text.c_str(), NULL, true);
+        const bool is_active_filament = m_selected_extruder_idx == extruder_idx;
 
         const ImVec2 button_size(max_filament_label_size.x + m_imgui->scaled(0.5f), 0.f);
 
@@ -603,21 +604,23 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
 
             // ColorButton provides exact sizing, click detection, border, and cursor advance
             ImGuiColorEditFlags flags = ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_NoTooltip;
-            if (m_selected_extruder_idx != extruder_idx) flags |= ImGuiColorEditFlags_NoBorder;
+            if (!is_active_filament) flags |= ImGuiColorEditFlags_NoBorder;
             #ifdef __APPLE__
                 ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGuiWrapper::COL_ORCA);
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+                ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.78f, 0.68f, 1.0f));
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, is_active_filament ? 2.5f : 0.0f);
                 ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0);
                 bool color_picked = ImGui::ColorButton(color_label.c_str(), avg_color_vec, flags, button_size);
                 ImGui::PopStyleVar(2);
-                ImGui::PopStyleColor(1);
+                ImGui::PopStyleColor(2);
             #else
                 ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGuiWrapper::COL_ORCA);
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0);
+                ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.78f, 0.68f, 1.0f));
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, is_active_filament ? 2.5f : 0.0f);
                 ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0);
                 bool color_picked = ImGui::ColorButton(color_label.c_str(), avg_color_vec, flags, button_size);
                 ImGui::PopStyleVar(2);
-                ImGui::PopStyleColor(1);
+                ImGui::PopStyleColor(2);
             #endif
             color_button_high = ImGui::GetCursorPos().y - color_button - 2.0;
             if (color_picked) { m_selected_extruder_idx = extruder_idx; }
@@ -665,21 +668,23 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         } else {
         // draw filament background
         ImGuiColorEditFlags flags = ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_NoTooltip;
-        if (m_selected_extruder_idx != extruder_idx) flags |= ImGuiColorEditFlags_NoBorder;
+        if (!is_active_filament) flags |= ImGuiColorEditFlags_NoBorder;
         #ifdef __APPLE__
             ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGuiWrapper::COL_ORCA); // ORCA use orca color for selected filament border
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.78f, 0.68f, 1.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, is_active_filament ? 2.5f : 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0);
             bool color_picked = ImGui::ColorButton(color_label.c_str(), color_vec, flags, button_size);
             ImGui::PopStyleVar(2);
-            ImGui::PopStyleColor(1);
+            ImGui::PopStyleColor(2);
         #else
             ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGuiWrapper::COL_ORCA); // ORCA use orca color for selected filament border
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0);
+            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.78f, 0.68f, 1.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, is_active_filament ? 2.5f : 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0);
             bool color_picked = ImGui::ColorButton(color_label.c_str(), color_vec, flags, button_size);
             ImGui::PopStyleVar(2);
-            ImGui::PopStyleColor(1);
+            ImGui::PopStyleColor(2);
         #endif
         color_button_high = ImGui::GetCursorPos().y - color_button - 2.0;
         if (color_picked) { m_selected_extruder_idx = extruder_idx; }
@@ -709,7 +714,16 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
     if (n_extruder_colors > 0) {
         int selected_filament = int(m_selected_extruder_idx) + 1;
         ImGui::AlignTextToFramePadding();
-        m_imgui->text(_L("Selected filament"));
+        const unsigned int active_filament_id = m_selected_extruder_idx < m_display_filament_ids.size() ?
+            m_display_filament_ids[m_selected_extruder_idx] : 0;
+        m_imgui->text(_L("Active paint"));
+        ImGui::SameLine();
+        if (active_filament_id >= 1 && active_filament_id <= m_extruders_colors.size()) {
+            ImGui::ColorButton("##active_paint_swatch", ImGuiWrapper::to_ImVec4(m_extruders_colors[active_filament_id - 1]),
+                ImGuiColorEditFlags_NoTooltip, ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
+            ImGui::SameLine();
+        }
+        ImGui::Text("Filament %u", active_filament_id);
         ImGui::SameLine();
         ImGui::PushItemWidth(m_imgui->scaled(4.5f));
         if (ImGui::InputInt("##selected_filament", &selected_filament, 1, 10, ImGuiInputTextFlags_CharsDecimal)) {
@@ -1376,55 +1390,59 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             auto stack_it = m_surface_color_feature_pass_stacks.find(selected_volume);
             if (found_selector && stack_it != m_surface_color_feature_pass_stacks.end()) {
                 ImGui::Separator();
-                ImGui::TextUnformatted("Feature passes (session)");
-                ImGui::TextDisabled("Analysis passes can be reordered or protected during this session.");
+                ImGui::TextUnformatted("Layers (current session)");
+                ImGui::TextDisabled("Select a layer to edit its order, protection, or visibility.");
 
                 enum class FeaturePassAction { None, ToggleEnabled, ToggleProtection, ToggleOverride, MoveUp, MoveDown, Duplicate, Delete };
                 FeaturePassAction action = FeaturePassAction::None;
                 size_t action_index = 0;
                 const std::vector<SurfaceColorPaintLayer> &layers = stack_it->second.layers();
+                size_t &active_layer_index = m_surface_color_active_layer_indices[selected_volume];
+                if (!layers.empty() && active_layer_index >= layers.size())
+                    active_layer_index = layers.size() - 1;
                 for (size_t layer_index = 0; layer_index < layers.size(); ++layer_index) {
                     const SurfaceColorPaintLayer &layer = layers[layer_index];
                     ImGui::PushID(static_cast<int>(layer_index));
-                    ImGui::Text("%zu. %s", layer_index + 1, layer.name.c_str());
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton(layer.enabled ? "Disable" : "Enable")) {
-                        action = FeaturePassAction::ToggleEnabled;
-                        action_index = layer_index;
-                    }
-                    if (layer.role == SurfaceColorPaintLayerRole::Paint) {
-                        ImGui::SameLine();
-                        if (ImGui::SmallButton(layer.protect_painted_facets ? "Unprotect" : "Protect")) {
-                            action = FeaturePassAction::ToggleProtection;
-                            action_index = layer_index;
-                        }
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton(layer.ignore_protection ? "Respect mask" : "Ignore mask")) {
-                        action = FeaturePassAction::ToggleOverride;
-                        action_index = layer_index;
-                    }
-                    ImGui::SameLine();
-                    if (layer_index > 0 && ImGui::SmallButton("Up")) {
-                        action = FeaturePassAction::MoveUp;
-                        action_index = layer_index;
-                    }
-                    ImGui::SameLine();
-                    if (layer_index + 1 < layers.size() && ImGui::SmallButton("Down")) {
-                        action = FeaturePassAction::MoveDown;
-                        action_index = layer_index;
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("Copy")) {
-                        action = FeaturePassAction::Duplicate;
-                        action_index = layer_index;
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton("Delete")) {
-                        action = FeaturePassAction::Delete;
-                        action_index = layer_index;
-                    }
+                    const std::string row_label = std::to_string(layer_index + 1) + ". " + layer.name +
+                        (layer.enabled ? "" : " (hidden)") +
+                        (layer.protect_painted_facets ? " (protected)" : "");
+                    if (ImGui::Selectable(row_label.c_str(), layer_index == active_layer_index,
+                                          ImGuiSelectableFlags_AllowDoubleClick))
+                        active_layer_index = layer_index;
                     ImGui::PopID();
+                }
+
+                if (!layers.empty()) {
+                    const SurfaceColorPaintLayer &active_layer = layers[active_layer_index];
+                    ImGui::Separator();
+                    ImGui::Text("Working layer: %zu. %s", active_layer_index + 1, active_layer.name.c_str());
+                    ImGui::TextDisabled("%zu whole-facet assignments%s", active_layer.assignments.size(),
+                        active_layer.role == SurfaceColorPaintLayerRole::Protect ? " - mask" : "");
+                    action_index = active_layer_index;
+                    if (ImGui::Button(active_layer.enabled ? "Disable layer" : "Enable layer"))
+                        action = FeaturePassAction::ToggleEnabled;
+                    if (active_layer.role == SurfaceColorPaintLayerRole::Paint) {
+                        ImGui::SameLine();
+                        if (ImGui::Button(active_layer.protect_painted_facets ? "Unprotect layer" : "Protect layer"))
+                            action = FeaturePassAction::ToggleProtection;
+                    }
+                    if (ImGui::Button(active_layer.ignore_protection ? "Respect mask" : "Ignore mask"))
+                        action = FeaturePassAction::ToggleOverride;
+                    if (active_layer_index > 0) {
+                        ImGui::SameLine();
+                        if (ImGui::Button("Move up"))
+                            action = FeaturePassAction::MoveUp;
+                    }
+                    if (active_layer_index + 1 < layers.size()) {
+                        ImGui::SameLine();
+                        if (ImGui::Button("Move down"))
+                            action = FeaturePassAction::MoveDown;
+                    }
+                    if (ImGui::Button("Duplicate layer"))
+                        action = FeaturePassAction::Duplicate;
+                    ImGui::SameLine();
+                    if (ImGui::Button("Delete layer"))
+                        action = FeaturePassAction::Delete;
                 }
 
                 if (action != FeaturePassAction::None) {
@@ -1442,15 +1460,20 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                         break;
                     case FeaturePassAction::MoveUp:
                         stack_it->second.move_layer(action_index, action_index - 1);
+                        active_layer_index = action_index - 1;
                         break;
                     case FeaturePassAction::MoveDown:
                         stack_it->second.move_layer(action_index, action_index + 1);
+                        active_layer_index = action_index + 1;
                         break;
                     case FeaturePassAction::Duplicate:
                         stack_it->second.duplicate_layer(action_index);
+                        active_layer_index = action_index + 1;
                         break;
                     case FeaturePassAction::Delete:
                         stack_it->second.erase_layer(action_index);
+                        if (!stack_it->second.layers().empty())
+                            active_layer_index = std::min(action_index, stack_it->second.layers().size() - 1);
                         break;
                     case FeaturePassAction::None:
                         break;
@@ -1470,6 +1493,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                     for (const SurfaceFeatureSelection &selection : selected_triangles)
                         protected_triangles.emplace_back(selection.triangle_index);
                     stack_it->second.add_protect_layer("Surface feature mask", std::move(protected_triangles));
+                    active_layer_index = stack_it->second.layers().size() - 1;
                     if (resolve_surface_color_feature_pass_stack(*selected_volume, selector_idx)) {
                         update_model_object();
                         m_parent.set_as_dirty();
@@ -1599,6 +1623,7 @@ void GLGizmoMmuSegmentation::init_model_triangle_selectors()
     // Feature passes retain pointers to live model volumes. Rebuild the session
     // stack when selectors are rebuilt so project reloads cannot leave stale keys.
     m_surface_color_feature_pass_stacks.clear();
+    m_surface_color_active_layer_indices.clear();
     m_triangle_selectors.clear();
     m_volumes_extruder_idxs.clear();
 
@@ -1668,6 +1693,7 @@ bool GLGizmoMmuSegmentation::append_surface_color_feature_pass(
     if (stack == nullptr)
         return false;
     stack->add_paint_layer(std::move(name), std::move(assignments));
+    m_surface_color_active_layer_indices[&volume] = stack->layers().empty() ? 0 : stack->layers().size() - 1;
     return resolve_surface_color_feature_pass_stack(volume, selector_idx);
 }
 

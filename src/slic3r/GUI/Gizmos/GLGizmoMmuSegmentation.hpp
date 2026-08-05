@@ -118,6 +118,7 @@ protected:
     std::vector<int>                  m_volumes_extruder_idxs;
     SurfaceColorAssist                 m_surface_color_assist;
     std::map<const ModelVolume*, SurfaceColorPaintLayerStack> m_surface_color_feature_pass_stacks;
+    std::map<const ModelVolume*, size_t> m_surface_color_active_layer_indices;
 
     // BBS
     wchar_t                           m_current_tool = 0;
