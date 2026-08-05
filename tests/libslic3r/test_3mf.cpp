@@ -80,6 +80,30 @@ SCENARIO("Export+Import geometry to/from 3mf file cycle", "[3mf]") {
     }
 }
 
+SCENARIO("Surface color paint layers survive a 3mf round trip", "[3mf][surface_color]") {
+    Model src_model;
+    std::string src_file = std::string(TEST_DATA_DIR) + "/test_3mf/Prusa.stl";
+    load_stl(src_file.c_str(), &src_model);
+    src_model.add_default_instances();
+
+    ModelVolume* src_volume = src_model.objects.front()->volumes.front();
+    src_volume->surface_color_paint_layers =
+        "surface_color_paint_layers_v1\nbase 1 1 1\nlayer paint 1 0 1 Accent\nassign 1 2 1\nend\n";
+
+    std::string test_file = std::string(TEST_DATA_DIR) + "/test_3mf/surface_color_paint_layers.3mf";
+    REQUIRE(store_3mf(test_file.c_str(), &src_model, nullptr, false));
+
+    Model dst_model;
+    DynamicPrintConfig dst_config;
+    ConfigSubstitutionContext ctxt{ ForwardCompatibilitySubstitutionRule::Disable };
+    REQUIRE(load_3mf(test_file.c_str(), dst_config, ctxt, &dst_model, false));
+    boost::filesystem::remove(test_file);
+
+    REQUIRE(dst_model.objects.size() == 1);
+    REQUIRE(dst_model.objects.front()->volumes.size() == 1);
+    REQUIRE(dst_model.objects.front()->volumes.front()->surface_color_paint_layers == src_volume->surface_color_paint_layers);
+}
+
 SCENARIO("2D convex hull of sinking object", "[3mf]") {
     GIVEN("model") {
         // load a model

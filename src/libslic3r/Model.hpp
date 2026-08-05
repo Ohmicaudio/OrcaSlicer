@@ -876,6 +876,10 @@ public:
     // List of mesh facets painted for MMU segmentation.
     FacetsAnnotation    mmu_segmentation_facets;
 
+    // Editable Surface Color Assist layers. The resolved result remains in
+    // mmu_segmentation_facets for normal slicing compatibility.
+    std::string         surface_color_paint_layers;
+
     // List of mesh facets painted for fuzzy skin.
     FacetsAnnotation    fuzzy_skin_facets;
 
@@ -1105,7 +1109,7 @@ private:
         name(other.name), source(other.source), m_mesh(other.m_mesh), m_convex_hull(other.m_convex_hull),
         config(other.config), m_type(other.m_type), object(object), m_transformation(other.m_transformation),
         supported_facets(other.supported_facets), seam_facets(other.seam_facets), mmu_segmentation_facets(other.mmu_segmentation_facets),
-        fuzzy_skin_facets(other.fuzzy_skin_facets), cut_info(other.cut_info), text_configuration(other.text_configuration), emboss_shape(other.emboss_shape)
+        fuzzy_skin_facets(other.fuzzy_skin_facets), surface_color_paint_layers(other.surface_color_paint_layers), cut_info(other.cut_info), text_configuration(other.text_configuration), emboss_shape(other.emboss_shape)
     {
 		assert(this->id().valid()); 
         assert(this->config.id().valid()); 

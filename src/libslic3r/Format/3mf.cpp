@@ -113,6 +113,7 @@ static constexpr const char* CUSTOM_SUPPORTS_ATTR = "slic3rpe:custom_supports";
 static constexpr const char* CUSTOM_SEAM_ATTR = "slic3rpe:custom_seam";
 static constexpr const char* MMU_SEGMENTATION_ATTR = "slic3rpe:mmu_segmentation";
 static constexpr const char* FUZZY_SKIN_ATTR = "slic3rpe:fuzzy_skin";
+static constexpr const char* SURFACE_COLOR_PAINT_LAYERS_KEY = "slic3rpe:surface_color_paint_layers";
 
 static constexpr const char* KEY_ATTR = "key";
 static constexpr const char* VALUE_ATTR = "value";
@@ -2042,6 +2043,7 @@ ModelVolumeType type_from_string(const std::string &s)
             "source_offset_x",
             "source_offset_y",
             "source_offset_z",
+            SURFACE_COLOR_PAINT_LAYERS_KEY,
             "extruder",
             "modifier"
         };
@@ -2204,6 +2206,8 @@ ModelVolumeType type_from_string(const std::string &s)
                     volume->source.is_converted_from_inches = metadata.value == "1";
                 else if (metadata.key == SOURCE_IN_METERS)
                     volume->source.is_converted_from_meters = metadata.value == "1";
+                else if (metadata.key == SURFACE_COLOR_PAINT_LAYERS_KEY)
+                    volume->surface_color_paint_layers = metadata.value;
                 else
                     volume->config.set_deserialize(metadata.key, metadata.value, config_substitutions);
             }
@@ -3161,6 +3165,14 @@ ModelVolumeType type_from_string(const std::string &s)
                             }
 
                             // stores volume's config data
+                            if (!volume->surface_color_paint_layers.empty()) {
+                                std::string surface_color_paint_layers = xml_escape(volume->surface_color_paint_layers);
+                                boost::replace_all(surface_color_paint_layers, "\r", "&#13;");
+                                boost::replace_all(surface_color_paint_layers, "\n", "&#10;");
+                                stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR << "=\""
+                                    << SURFACE_COLOR_PAINT_LAYERS_KEY << "\" " << VALUE_ATTR << "=\"" << surface_color_paint_layers << "\"/>\n";
+                            }
+
                             for (const std::string& key : volume->config.keys()) {
                                 stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR << "=\"" << key << "\" " << VALUE_ATTR << "=\"" << volume->config.opt_serialize(key) << "\"/>\n";
                             }

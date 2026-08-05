@@ -1387,11 +1387,14 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 }
                 ++selector_idx;
             }
+            if (found_selector && !selected_volume->surface_color_paint_layers.empty())
+                ensure_surface_color_feature_pass_stack(*selected_volume, selector_idx);
+
             auto stack_it = m_surface_color_feature_pass_stacks.find(selected_volume);
             if (found_selector && stack_it != m_surface_color_feature_pass_stacks.end()) {
                 ImGui::Separator();
-                ImGui::TextUnformatted("Layers (current session)");
-                ImGui::TextDisabled("Select a layer to edit its order, protection, or visibility.");
+                ImGui::TextUnformatted("Layers");
+                ImGui::TextDisabled("Saved with the project. Select a layer to edit its order, protection, or visibility.");
 
                 enum class FeaturePassAction { None, ToggleEnabled, ToggleProtection, ToggleOverride, MoveUp, MoveDown, Duplicate, Delete };
                 FeaturePassAction action = FeaturePassAction::None;
@@ -1667,6 +1670,16 @@ SurfaceColorPaintLayerStack* GLGizmoMmuSegmentation::ensure_surface_color_featur
         existing != m_surface_color_feature_pass_stacks.end())
         return &existing->second;
 
+    if (!volume.surface_color_paint_layers.empty()) {
+        std::optional<SurfaceColorPaintLayerStack> restored =
+            deserialize_surface_color_paint_layer_stack(volume.surface_color_paint_layers);
+        if (restored && restored->base_filaments().size() == volume.mesh().its.indices.size()) {
+            auto inserted = m_surface_color_feature_pass_stacks.emplace(&volume, std::move(*restored));
+            m_surface_color_active_layer_indices[&volume] = inserted.first->second.layers().empty() ? 0 : inserted.first->second.layers().size() - 1;
+            return &inserted.first->second;
+        }
+    }
+
     // A feature pass operates on original mesh facets. Do not flatten a manual
     // brush edit that has already split an original facet into different colors.
     std::vector<unsigned int> base_filaments;
@@ -1713,6 +1726,8 @@ bool GLGizmoMmuSegmentation::resolve_surface_color_feature_pass_stack(const Mode
             return false;
         selector.set_facet(int(triangle_idx), static_cast<EnforcerBlockerType>(resolved[triangle_idx]));
     }
+    const_cast<ModelVolume&>(volume).surface_color_paint_layers =
+        serialize_surface_color_paint_layer_stack(stack_it->second);
     m_triangle_selectors[selector_idx]->request_update_render_data(true);
     return true;
 }
