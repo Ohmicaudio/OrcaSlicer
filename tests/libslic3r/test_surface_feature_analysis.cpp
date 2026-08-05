@@ -356,6 +356,17 @@ TEST_CASE("Surface feature band smoothing keeps an established boundary", "[Surf
           std::vector<size_t> { 0, 0, 1, 1 });
 }
 
+TEST_CASE("Surface feature band smoothing removes a small connected color island", "[SurfaceFeatureAnalysis]")
+{
+    SurfaceFeatureField field;
+    field.status = SurfaceFeatureAnalysisStatus::Complete;
+    field.triangle_neighbors = { { 1 }, { 0, 2 }, { 1, 3 }, { 2 } };
+    field.triangle_areas_mm2 = { 0.05f, 0.05f, 0.05f, 0.05f };
+
+    CHECK(smooth_surface_feature_band_assignments(field, { 0, 1, 2, 3 }, { 0, 1, 1, 0 }, 1, 0.25f) ==
+          std::vector<size_t> { 0, 0, 0, 0 });
+}
+
 TEST_CASE("Surface feature band smoothing stays within the selected facets", "[SurfaceFeatureAnalysis]")
 {
     SurfaceFeatureField field;

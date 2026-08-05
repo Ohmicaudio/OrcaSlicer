@@ -358,7 +358,8 @@ std::vector<size_t> smooth_surface_feature_band_assignments(
     const SurfaceFeatureField &field,
     const std::vector<size_t> &triangle_indices,
     const std::vector<size_t> &band_assignments,
-    unsigned smoothing_passes)
+    unsigned smoothing_passes,
+    float minimum_component_area_mm2)
 {
     if (field.status != SurfaceFeatureAnalysisStatus::Complete
         || triangle_indices.size() != band_assignments.size()
@@ -376,6 +377,63 @@ std::vector<size_t> smooth_surface_feature_band_assignments(
     std::vector<size_t> current = band_assignments;
     for (unsigned pass = 0; pass < smoothing_passes; ++pass) {
         std::vector<size_t> next = current;
+
+        // Merge undersized connected components before local voting. A two- or
+        // three-triangle island is often a tessellation artifact, not a useful
+        // color region; immediate-neighbor voting alone leaves such islands
+        // intact when their members vote for one another.
+        if (minimum_component_area_mm2 > 0.0f && field.triangle_areas_mm2.size() >= selected_index.size()) {
+            std::vector<bool> visited(triangle_indices.size(), false);
+            for (size_t seed = 0; seed < triangle_indices.size(); ++seed) {
+                if (visited[seed])
+                    continue;
+
+                const size_t component_band = current[seed];
+                std::vector<size_t> component { seed };
+                visited[seed] = true;
+                float component_area = 0.0f;
+                std::map<size_t, size_t> neighboring_band_counts;
+                for (size_t component_index = 0; component_index < component.size(); ++component_index) {
+                    const size_t selected_idx = component[component_index];
+                    const size_t triangle_idx = triangle_indices[selected_idx];
+                    component_area += field.triangle_areas_mm2[triangle_idx];
+                    for (const size_t neighbor : field.triangle_neighbors[triangle_idx]) {
+                        if (neighbor >= selected_index.size() || selected_index[neighbor] == -1)
+                            continue;
+                        const size_t neighbor_idx = static_cast<size_t>(selected_index[neighbor]);
+                        if (current[neighbor_idx] == component_band) {
+                            if (!visited[neighbor_idx]) {
+                                visited[neighbor_idx] = true;
+                                component.emplace_back(neighbor_idx);
+                            }
+                        } else {
+                            ++neighboring_band_counts[current[neighbor_idx]];
+                        }
+                    }
+                }
+
+                if (component_area >= minimum_component_area_mm2 || neighboring_band_counts.empty())
+                    continue;
+
+                size_t replacement_band = neighboring_band_counts.begin()->first;
+                size_t highest_count = neighboring_band_counts.begin()->second;
+                for (const auto &[band, count] : neighboring_band_counts) {
+                    if (count > highest_count || (count == highest_count && band < replacement_band)) {
+                        replacement_band = band;
+                        highest_count = count;
+                    }
+                }
+                // One boundary contact is an open edge, not a color island.
+                // Require the neighboring band to surround the component from
+                // at least two triangle edges before replacing it.
+                if (highest_count < 2)
+                    continue;
+                for (const size_t selected_idx : component)
+                    next[selected_idx] = replacement_band;
+            }
+        }
+
+        current = next;
         for (size_t selected_idx = 0; selected_idx < triangle_indices.size(); ++selected_idx) {
             std::map<size_t, size_t> band_counts;
             ++band_counts[current[selected_idx]];

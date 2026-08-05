@@ -1215,7 +1215,8 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                                 selection.normalized_score < (2.0f / 3.0f) ? 1 : 2);
                         }
                         const std::vector<size_t> smoothed_bands = smooth_surface_feature_band_assignments(
-                            *field, triangle_indices, band_assignments, assist_settings.color_edge_smoothing_passes);
+                            *field, triangle_indices, band_assignments, assist_settings.color_edge_smoothing_passes,
+                            assist_settings.min_patch_area_mm2);
                         const std::vector<size_t> &applied_bands = smoothed_bands.size() == band_assignments.size() ?
                             smoothed_bands : band_assignments;
                         for (size_t index = 0; index < selected_triangles.size(); ++index) {
@@ -1301,7 +1302,8 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                                     size_t(selection.normalized_score * float(steps))));
                             }
                             const std::vector<size_t> cleaned_bands = smooth_surface_feature_band_assignments(
-                                *field, triangle_indices, band_assignments, assist_settings.color_edge_smoothing_passes);
+                                *field, triangle_indices, band_assignments, assist_settings.color_edge_smoothing_passes,
+                                assist_settings.min_patch_area_mm2);
                             const std::vector<size_t> &applied_bands = cleaned_bands.size() == band_assignments.size() ?
                                 cleaned_bands : band_assignments;
                             const std::vector<bool> enabled_facets = select_surface_feature_enabled_bands(

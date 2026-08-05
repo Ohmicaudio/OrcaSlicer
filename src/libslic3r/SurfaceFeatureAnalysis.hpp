@@ -88,7 +88,8 @@ std::vector<size_t> smooth_surface_feature_band_assignments(
     const SurfaceFeatureField &field,
     const std::vector<size_t> &triangle_indices,
     const std::vector<size_t> &band_assignments,
-    unsigned smoothing_passes);
+    unsigned smoothing_passes,
+    float minimum_component_area_mm2 = 0.0f);
 
 // Returns one flag per assignment. Disabled bands deliberately leave their
 // facets unchanged when a surface-color ramp is applied.
