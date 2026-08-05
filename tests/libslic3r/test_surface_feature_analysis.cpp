@@ -336,6 +336,84 @@ TEST_CASE("Surface feature selection combines valleys and ridges for a deviation
     CHECK(select_surface_feature_triangles(field, SurfaceFeatureMode::Both, 0.5f, 0.0f) == std::vector<size_t> { 0, 1 });
 }
 
+TEST_CASE("Surface feature band smoothing removes isolated color islands", "[SurfaceFeatureAnalysis]")
+{
+    SurfaceFeatureField field;
+    field.status = SurfaceFeatureAnalysisStatus::Complete;
+    field.triangle_neighbors = { { 1 }, { 0, 2 }, { 1, 3 }, { 2 } };
+
+    CHECK(smooth_surface_feature_band_assignments(field, { 0, 1, 2, 3 }, { 0, 1, 0, 0 }, 1) ==
+          std::vector<size_t> { 0, 0, 0, 0 });
+}
+
+TEST_CASE("Surface feature band smoothing keeps an established boundary", "[SurfaceFeatureAnalysis]")
+{
+    SurfaceFeatureField field;
+    field.status = SurfaceFeatureAnalysisStatus::Complete;
+    field.triangle_neighbors = { { 1 }, { 0, 2 }, { 1, 3 }, { 2 } };
+
+    CHECK(smooth_surface_feature_band_assignments(field, { 0, 1, 2, 3 }, { 0, 0, 1, 1 }, 3) ==
+          std::vector<size_t> { 0, 0, 1, 1 });
+}
+
+TEST_CASE("Surface feature band smoothing stays within the selected facets", "[SurfaceFeatureAnalysis]")
+{
+    SurfaceFeatureField field;
+    field.status = SurfaceFeatureAnalysisStatus::Complete;
+    field.triangle_neighbors = { { 1 }, { 0, 2 }, { 1, 3 }, { 2 } };
+
+    CHECK(smooth_surface_feature_band_assignments(field, { 1, 2 }, { 0, 1 }, 2) ==
+          std::vector<size_t> { 0, 1 });
+}
+
+TEST_CASE("Surface feature enabled bands preserve disabled facets", "[SurfaceFeatureAnalysis]")
+{
+    CHECK(select_surface_feature_enabled_bands({ 0, 1, 2, 1, 4 }, { true, false, true }) ==
+          std::vector<bool> { true, false, true, false, false });
+}
+
+TEST_CASE("Surface color layers resolve in stack order", "[SurfaceColorPaintLayers]")
+{
+    SurfaceColorPaintLayerStack stack({ 1, 1, 1, 1 });
+    stack.add_paint_layer("Base accent", { { 1, 2 }, { 2, 3 } });
+    stack.add_paint_layer("Highlight", { { 2, 4 } });
+    CHECK(stack.resolve() == std::vector<unsigned int> { 1, 2, 4, 1 });
+}
+
+TEST_CASE("Surface color protection rejects later paint", "[SurfaceColorPaintLayers]")
+{
+    SurfaceColorPaintLayerStack stack({ 1, 1, 1 });
+    const size_t protected_layer = stack.add_paint_layer("Protected", { { 1, 2 } });
+    stack.layers()[protected_layer].protect_painted_facets = true;
+    stack.add_paint_layer("Later", { { 1, 3 }, { 2, 3 } });
+    CHECK(stack.resolve() == std::vector<unsigned int> { 1, 2, 3 });
+}
+
+TEST_CASE("Generic masks protect facets without producing a filament", "[SurfaceColorPaintLayers]")
+{
+    SurfaceColorPaintLayerStack stack({ 1, 1, 1 });
+    stack.add_protect_layer("Keep face", { 0, 2 });
+    stack.add_paint_layer("Later", { { 0, 3 }, { 1, 3 }, { 2, 3 } });
+    CHECK(stack.resolve() == std::vector<unsigned int> { 1, 3, 1 });
+}
+
+TEST_CASE("Disabled surface color layers leave base paint unchanged", "[SurfaceColorPaintLayers]")
+{
+    SurfaceColorPaintLayerStack stack({ 1, 1 });
+    const size_t layer = stack.add_paint_layer("Disabled", { { 0, 2 }, { 1, 3 } });
+    stack.layers()[layer].enabled = false;
+    CHECK(stack.resolve() == std::vector<unsigned int> { 1, 1 });
+}
+
+TEST_CASE("Surface color layers can explicitly ignore earlier protection", "[SurfaceColorPaintLayers]")
+{
+    SurfaceColorPaintLayerStack stack({ 1, 1 });
+    stack.add_protect_layer("Mask", { 0 });
+    const size_t layer = stack.add_paint_layer("Override", { { 0, 4 } });
+    stack.layers()[layer].ignore_protection = true;
+    CHECK(stack.resolve() == std::vector<unsigned int> { 4, 1 });
+}
+
 TEST_CASE("Surface feature color suggestion prefers dark valleys and bright ridges", "[SurfaceFeatureAnalysis]")
 {
     const std::vector<SurfaceFeatureColor> palette {

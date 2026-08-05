@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <tuple>
 #include <utility>
 
@@ -349,6 +350,146 @@ std::vector<size_t> select_surface_feature_triangles(
     }
     std::sort(selected.begin(), selected.end());
     return selected;
+}
+
+std::vector<size_t> smooth_surface_feature_band_assignments(
+    const SurfaceFeatureField &field,
+    const std::vector<size_t> &triangle_indices,
+    const std::vector<size_t> &band_assignments,
+    unsigned smoothing_passes)
+{
+    if (field.status != SurfaceFeatureAnalysisStatus::Complete
+        || triangle_indices.size() != band_assignments.size()
+        || field.triangle_neighbors.empty() && !triangle_indices.empty())
+        return {};
+
+    std::vector<int> selected_index(field.triangle_neighbors.size(), -1);
+    for (size_t index = 0; index < triangle_indices.size(); ++index) {
+        const size_t triangle_index = triangle_indices[index];
+        if (triangle_index >= selected_index.size() || selected_index[triangle_index] != -1)
+            return {};
+        selected_index[triangle_index] = static_cast<int>(index);
+    }
+
+    std::vector<size_t> current = band_assignments;
+    for (unsigned pass = 0; pass < smoothing_passes; ++pass) {
+        std::vector<size_t> next = current;
+        for (size_t selected_idx = 0; selected_idx < triangle_indices.size(); ++selected_idx) {
+            std::map<size_t, size_t> band_counts;
+            ++band_counts[current[selected_idx]];
+            for (const size_t neighbor : field.triangle_neighbors[triangle_indices[selected_idx]]) {
+                if (neighbor >= selected_index.size() || selected_index[neighbor] == -1)
+                    continue;
+                ++band_counts[current[static_cast<size_t>(selected_index[neighbor])]];
+            }
+
+            const size_t current_band = current[selected_idx];
+            size_t chosen_band = current_band;
+            size_t highest_count = band_counts[current_band];
+            for (const auto &[band, count] : band_counts) {
+                // Keep the current band on ties. This avoids oscillation and
+                // leaves an established boundary in place.
+                if (count > highest_count) {
+                    chosen_band = band;
+                    highest_count = count;
+                }
+            }
+            next[selected_idx] = chosen_band;
+        }
+        current = std::move(next);
+    }
+
+    return current;
+}
+
+std::vector<bool> select_surface_feature_enabled_bands(
+    const std::vector<size_t> &band_assignments,
+    const std::vector<bool> &enabled_bands)
+{
+    std::vector<bool> selected;
+    selected.reserve(band_assignments.size());
+    for (const size_t band : band_assignments)
+        selected.emplace_back(band < enabled_bands.size() && enabled_bands[band]);
+    return selected;
+}
+
+SurfaceColorPaintLayerStack::SurfaceColorPaintLayerStack(std::vector<unsigned int> base_filaments)
+    : m_base_filaments(std::move(base_filaments))
+{
+}
+
+size_t SurfaceColorPaintLayerStack::add_paint_layer(
+    std::string name,
+    std::vector<SurfaceColorPaintAssignment> assignments)
+{
+    m_layers.emplace_back(SurfaceColorPaintLayer {
+        std::move(name), SurfaceColorPaintLayerRole::Paint, true, true, false, false, std::move(assignments)
+    });
+    return m_layers.size() - 1;
+}
+
+size_t SurfaceColorPaintLayerStack::add_protect_layer(std::string name, std::vector<size_t> triangle_indices)
+{
+    std::vector<SurfaceColorPaintAssignment> assignments;
+    assignments.reserve(triangle_indices.size());
+    for (const size_t triangle_index : triangle_indices)
+        assignments.emplace_back(SurfaceColorPaintAssignment { triangle_index, 0, true });
+    m_layers.emplace_back(SurfaceColorPaintLayer {
+        std::move(name), SurfaceColorPaintLayerRole::Protect, true, true, false, false, std::move(assignments)
+    });
+    return m_layers.size() - 1;
+}
+
+bool SurfaceColorPaintLayerStack::move_layer(size_t from_index, size_t to_index)
+{
+    if (from_index >= m_layers.size() || to_index >= m_layers.size() || from_index == to_index)
+        return from_index == to_index && from_index < m_layers.size();
+
+    SurfaceColorPaintLayer layer = std::move(m_layers[from_index]);
+    m_layers.erase(m_layers.begin() + from_index);
+    m_layers.insert(m_layers.begin() + to_index, std::move(layer));
+    return true;
+}
+
+bool SurfaceColorPaintLayerStack::erase_layer(size_t layer_index)
+{
+    if (layer_index >= m_layers.size())
+        return false;
+    m_layers.erase(m_layers.begin() + layer_index);
+    return true;
+}
+
+bool SurfaceColorPaintLayerStack::duplicate_layer(size_t layer_index)
+{
+    if (layer_index >= m_layers.size())
+        return false;
+    SurfaceColorPaintLayer copy = m_layers[layer_index];
+    copy.name += " copy";
+    m_layers.insert(m_layers.begin() + layer_index + 1, std::move(copy));
+    return true;
+}
+
+std::vector<unsigned int> SurfaceColorPaintLayerStack::resolve() const
+{
+    std::vector<unsigned int> resolved = m_base_filaments;
+    std::vector<bool> protected_facets(resolved.size(), false);
+
+    for (const SurfaceColorPaintLayer &layer : m_layers) {
+        if (!layer.enabled)
+            continue;
+        for (const SurfaceColorPaintAssignment &assignment : layer.assignments) {
+            if (!assignment.enabled || assignment.triangle_index >= resolved.size())
+                continue;
+            if (layer.role == SurfaceColorPaintLayerRole::Paint && assignment.filament_id != 0 &&
+                (layer.ignore_protection || !protected_facets[assignment.triangle_index]))
+                resolved[assignment.triangle_index] = assignment.filament_id;
+        }
+        if (layer.role == SurfaceColorPaintLayerRole::Protect || layer.protect_painted_facets)
+            for (const SurfaceColorPaintAssignment &assignment : layer.assignments)
+                if (assignment.enabled && assignment.triangle_index < protected_facets.size())
+                    protected_facets[assignment.triangle_index] = true;
+    }
+    return resolved;
 }
 
 std::optional<size_t> suggest_surface_feature_filament(
