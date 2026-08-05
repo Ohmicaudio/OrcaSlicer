@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <limits>
 #include <map>
+#include <sstream>
 #include <tuple>
 #include <utility>
 
@@ -467,6 +469,70 @@ bool SurfaceColorPaintLayerStack::duplicate_layer(size_t layer_index)
     copy.name += " copy";
     m_layers.insert(m_layers.begin() + layer_index + 1, std::move(copy));
     return true;
+}
+
+std::string serialize_surface_color_paint_layer_stack(const SurfaceColorPaintLayerStack &stack)
+{
+    std::ostringstream output;
+    output << "surface_color_paint_layers_v1\n";
+    output << "base " << stack.base_filaments().size();
+    for (const unsigned int filament_id : stack.base_filaments())
+        output << ' ' << filament_id;
+    output << "\nlayers " << stack.layers().size() << '\n';
+
+    for (const SurfaceColorPaintLayer &layer : stack.layers()) {
+        output << "layer " << std::quoted(layer.name) << ' '
+               << static_cast<unsigned int>(layer.role) << ' '
+               << layer.enabled << ' ' << layer.visible << ' '
+               << layer.protect_painted_facets << ' ' << layer.ignore_protection << ' '
+               << layer.assignments.size() << '\n';
+        for (const SurfaceColorPaintAssignment &assignment : layer.assignments)
+            output << "assignment " << assignment.triangle_index << ' '
+                   << assignment.filament_id << ' ' << assignment.enabled << '\n';
+    }
+    return output.str();
+}
+
+std::optional<SurfaceColorPaintLayerStack> deserialize_surface_color_paint_layer_stack(const std::string &serialized)
+{
+    std::istringstream input(serialized);
+    std::string header;
+    if (!std::getline(input, header) || header != "surface_color_paint_layers_v1")
+        return std::nullopt;
+
+    std::string tag;
+    size_t base_count = 0;
+    if (!(input >> tag >> base_count) || tag != "base")
+        return std::nullopt;
+    std::vector<unsigned int> base_filaments(base_count);
+    for (unsigned int &filament_id : base_filaments)
+        if (!(input >> filament_id))
+            return std::nullopt;
+
+    size_t layer_count = 0;
+    if (!(input >> tag >> layer_count) || tag != "layers")
+        return std::nullopt;
+
+    SurfaceColorPaintLayerStack stack(std::move(base_filaments));
+    for (size_t layer_index = 0; layer_index < layer_count; ++layer_index) {
+        SurfaceColorPaintLayer layer;
+        unsigned int role = 0;
+        size_t assignment_count = 0;
+        if (!(input >> tag >> std::quoted(layer.name) >> role >> layer.enabled >> layer.visible
+              >> layer.protect_painted_facets >> layer.ignore_protection >> assignment_count)
+            || tag != "layer" || role > static_cast<unsigned int>(SurfaceColorPaintLayerRole::Protect))
+            return std::nullopt;
+        layer.role = static_cast<SurfaceColorPaintLayerRole>(role);
+        layer.assignments.resize(assignment_count);
+        for (SurfaceColorPaintAssignment &assignment : layer.assignments)
+            if (!(input >> tag >> assignment.triangle_index >> assignment.filament_id >> assignment.enabled)
+                || tag != "assignment")
+                return std::nullopt;
+        stack.layers().emplace_back(std::move(layer));
+    }
+
+    input >> std::ws;
+    return input.eof() ? std::optional<SurfaceColorPaintLayerStack>(std::move(stack)) : std::nullopt;
 }
 
 std::vector<unsigned int> SurfaceColorPaintLayerStack::resolve() const

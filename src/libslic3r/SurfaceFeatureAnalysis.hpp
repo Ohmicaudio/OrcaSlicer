@@ -140,6 +140,12 @@ private:
     std::vector<SurfaceColorPaintLayer> m_layers;
 };
 
+// Stable, in-memory representation for project metadata. The encoding is
+// deliberately independent of GUI and selector state so it can be stored by a
+// future project-format extension without changing the resolved paint format.
+std::string serialize_surface_color_paint_layer_stack(const SurfaceColorPaintLayerStack &stack);
+std::optional<SurfaceColorPaintLayerStack> deserialize_surface_color_paint_layer_stack(const std::string &serialized);
+
 std::optional<size_t> suggest_surface_feature_filament(
     SurfaceFeatureMode mode,
     size_t base_filament,

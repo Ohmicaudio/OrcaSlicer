@@ -414,6 +414,31 @@ TEST_CASE("Surface color layers can explicitly ignore earlier protection", "[Sur
     CHECK(stack.resolve() == std::vector<unsigned int> { 4, 1 });
 }
 
+TEST_CASE("Surface color layers round trip deterministically", "[SurfaceColorPaintLayers]")
+{
+    SurfaceColorPaintLayerStack stack({ 1, 3, 1, 2 });
+    const size_t accent = stack.add_paint_layer("Valley blend", { { 1, 5 }, { 3, 6, false } });
+    stack.layers()[accent].visible = false;
+    stack.layers()[accent].protect_painted_facets = true;
+    const size_t mask = stack.add_protect_layer("Do not repaint", { 0, 2 });
+    stack.layers()[mask].ignore_protection = true;
+
+    const std::string serialized = serialize_surface_color_paint_layer_stack(stack);
+    const auto restored = deserialize_surface_color_paint_layer_stack(serialized);
+
+    REQUIRE(restored);
+    CHECK(serialize_surface_color_paint_layer_stack(*restored) == serialized);
+    CHECK(restored->base_filaments() == stack.base_filaments());
+    REQUIRE(restored->layers().size() == 2);
+    CHECK(restored->layers()[0].name == "Valley blend");
+    CHECK(restored->layers()[0].role == SurfaceColorPaintLayerRole::Paint);
+    CHECK_FALSE(restored->layers()[0].visible);
+    CHECK(restored->layers()[0].protect_painted_facets);
+    CHECK(restored->layers()[0].assignments[1].enabled == false);
+    CHECK(restored->layers()[1].role == SurfaceColorPaintLayerRole::Protect);
+    CHECK(restored->layers()[1].ignore_protection);
+}
+
 TEST_CASE("Surface feature color suggestion prefers dark valleys and bright ridges", "[SurfaceFeatureAnalysis]")
 {
     const std::vector<SurfaceFeatureColor> palette {
