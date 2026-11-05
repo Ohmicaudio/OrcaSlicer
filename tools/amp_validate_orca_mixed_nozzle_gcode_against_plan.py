@@ -78,6 +78,7 @@ def expected_from_packet(packet_dir: Path, expected_tool_map: Optional[Path]) ->
 
 def inspect_gcode(path: Path, region_names: Iterable[str]) -> Dict[str, Any]:
     nozzles: List[str] = []
+    nozzle_headers: List[List[str]] = []
     tools: List[str] = []
     print_settings_id = ""
     z_values: List[float] = []
@@ -95,7 +96,9 @@ def inspect_gcode(path: Path, region_names: Iterable[str]) -> Dict[str, Any]:
 
             nozzle_match = NOZZLE_RE.search(line)
             if nozzle_match:
-                nozzles.extend(normalize_nozzle(value) for value in split_values(nozzle_match.group(1)))
+                header = [normalize_nozzle(value) for value in split_values(nozzle_match.group(1))]
+                nozzle_headers.append(header)
+                nozzles.extend(header)
 
             settings_match = PRINT_SETTINGS_RE.search(line)
             if settings_match and not print_settings_id:
@@ -125,6 +128,7 @@ def inspect_gcode(path: Path, region_names: Iterable[str]) -> Dict[str, Any]:
 
     return {
         "nozzle_diameter_values_raw": nozzles,
+        "nozzle_diameter_headers": nozzle_headers,
         "nozzle_diameter_values_unique": sorted(set(nozzles), key=lambda value: float(value)),
         "tool_commands": tools,
         "active_tools": sorted(set(tools), key=lambda value: int(value)),
@@ -164,6 +168,25 @@ def validate(packet_dir: Path, gcode_path: Path, expected_tool_map: Optional[Pat
     for tool in expected["required_tools"]:
         if tool not in observed_tools:
             result["errors"].append(f"Missing expected active tool T{tool}.")
+
+    # Orca's nozzle vector is indexed by T command. Matching independent sets
+    # cannot establish the planner's tool/nozzle mapping (a permutation passes).
+    # Check every declaration separately rather than concatenating repeated
+    # headers, which could conceal a missing slot or a conflicting declaration.
+    for mapping in expected["tool_map"]:
+        command = str(mapping["expected_t_command"])
+        if re.fullmatch(r"T\d+", command) is None:
+            result["errors"].append(f"Invalid expected tool command {command!r}.")
+            continue
+        index = int(command[1:])
+        nozzle = normalize_nozzle(mapping["expected_nozzle_diameter"])
+        for number, header in enumerate(observed["nozzle_diameter_headers"], start=1):
+            if index >= len(header):
+                result["errors"].append(f"Nozzle header {number} has no slot for {command}.")
+            elif header[index] != nozzle:
+                result["errors"].append(
+                    f"Nozzle header {number} maps {command} to {header[index]}, expected {nozzle}."
+                )
 
     expected_nozzle_set = set(expected["required_nozzles"])
     extra_nozzles = [
